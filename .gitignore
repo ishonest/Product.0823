@@ -1,0 +1,5 @@
+Data/
+.Rproj.user/
+.RData
+.Rhistory
+dopar_log.txt
