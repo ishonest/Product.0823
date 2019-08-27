@@ -9,7 +9,6 @@ source("./Functions/20190823.T01.Start.R")
 
 while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.Trading.At"]])
 {
-  View(IB.01.targets)
 
   if(IB.Parms[["System.Live"]])
   {
@@ -19,11 +18,13 @@ while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.T
     Update.Activity()
     Update.Targets()
     View(IB.04.activity)
+    View(IB.01.targets)
     
     IB.Account.Status()
     
     IB.Actions()
     IB.Order()
+    IB.Action.Plots()
   }
   
   cat("\nCycle Complete: Next cycle will commence at", format(Sys.time() + 120, "%X"), "...\n")

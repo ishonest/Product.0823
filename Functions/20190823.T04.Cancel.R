@@ -39,9 +39,9 @@ IB.Cancel.Orders <- function()
         rename(IB.Version = X2, orderId = X3, conId = X4, symbol = X5, sectype = X6, 
                strike = X10, currency = X11, action = X13, totalQuantity = X14,
                orderType = X15, lmtPrice = X16, auxPrice = X17, tif = X18, 
-               outsideRTH = X19, account = X20, orderRef = X23, parentId = X25
+               outsideRTH = X19, account = X20, algoId = X23, parentId = X25
         ) %>%
-        select(account, parentId, orderId, conId, symbol, sectype, strike, currency,
+        select(account, parentId, orderId, algoId, conId, symbol, sectype, strike, currency,
                action, totalQuantity, orderType, lmtPrice, auxPrice, tif, IB.Version) %>%
         mutate(orderId = as.integer(orderId)
                , parentId = as.integer(parentId)
@@ -51,9 +51,9 @@ IB.Cancel.Orders <- function()
     } else 
     {
       open <- data.frame(account = character(), parentId = integer(), orderId = integer()
-                         , conId = character(), symbol = character(), sectype = character()
-                         , strike = character(), currency = character(), action = character()
-                         , totalQuantity = numeric(), orderType = character()
+                         , algoId = character(), conId = character(), symbol = character()
+                         , sectype = character(), strike = character(), currency = character()
+                         , action = character(), totalQuantity = numeric(), orderType = character()
                          , lmtPrice = numeric(), auxPrice = numeric(), tif = character()
                          , IB.Version = character(), stringsAsFactors = FALSE)
       
@@ -61,33 +61,26 @@ IB.Cancel.Orders <- function()
     }
     
     assign("IB.05.open.orders", open, envir = .GlobalEnv)
-    
+
     if(return.df == TRUE) 
     {return(open)} else
     {rm(open)}
   }
-
+  
   IB.05.open.orders <- AF.Open.Orders(return.df = TRUE)
   
-  if(exists("IB.05.open.orders", envir = .GlobalEnv) & nrow(IB.05.open.orders) > 0)
+  if(exists("IB.05.open.orders", envir = .GlobalEnv) && nrow(IB.05.open.orders) > 0)
   {
-    to.be.cancelled <- IB.05.open.orders
-    
-    if(nrow(to.be.cancelled) > 0)
-    {
-      IB.03.orders <- to.be.cancelled %>% select(-IB.Version) %>% distinct() %>% 
+      IB.03.orders <- IB.05.open.orders %>% select(-IB.Version) %>% distinct() %>% 
                       mutate(order.ts = Sys.time(), order.type = "Order Cancelled") %>%
                       bind_rows(IB.03.orders) %>%
                       arrange(desc(order.ts))
       
       assign("IB.03.orders",  IB.03.orders, envir = .GlobalEnv)
       
-      for(i in 1:nrow(to.be.cancelled))
-      {cancelOrder(twsconn = tws, orderId = to.be.cancelled$orderId[i])}
+      for(i in 1:nrow(IB.05.open.orders))
+      {cancelOrder(twsconn = tws, orderId = IB.05.open.orders$orderId[i])}
       rm(i)
-    }
-    
-    rm(to.be.cancelled)
   }
   
   rm(AF.Open.Orders)

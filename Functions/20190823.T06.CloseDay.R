@@ -1,6 +1,9 @@
-IB.Missed.Orders <- function(today = Sys.Date())
+IB.Missed.Orders <- function()
 {
-  d1 <- foreach(ticker = unique(IB.01.targets$ticker),
+  first.targets <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds"))
+  today <- max(first.targets$ds, na.rm = TRUE)
+  
+  d1 <- foreach(ticker = unique(first.targets$ticker),
                 .combine = bind_rows, .errorhandling = 'remove') %do%
     {
       d1 <- get.clean.data(ticker, src = "yahoo", first.date = today, last.date  = today + 1) %>%
@@ -12,10 +15,9 @@ IB.Missed.Orders <- function(today = Sys.Date())
       return(d1)
     }
 
-  x1 <- IB.01.targets %>%
+  x1 <- first.targets %>%
         left_join(d1, by = c("ticker", "ds")) %>%
-        mutate(action = case_when(Type == "LONG" & invest > 0 & 
-                                    low <= buy.price & low > stop.price ~ "BUY"
+        mutate(action = case_when(Type == "LONG" & invest > 0 & low <= buy.price ~ "BUY"
                                   , Type == "LONG" & action == "HOLD" & 
                                     sell.price <= high ~ "SELL"
                                   , Type == "LONG" & action == "HOLD" & 
@@ -23,8 +25,7 @@ IB.Missed.Orders <- function(today = Sys.Date())
                                   , Type == "LONG" & action == "HOLD" & 
                                     (!is.na(last.sell) & last.sell >= 0) ~ "EOD SELL"
                                   
-                                  , Type == "SHRT" & invest > 0 & 
-                                    high >= buy.price & high < stop.price ~ "BUY"
+                                  , Type == "SHRT" & invest > 0 & high >= buy.price ~ "BUY"
                                   , Type == "SHRT" & action == "HOLD" & 
                                     sell.price >= low ~ "SELL"
                                   , Type == "SHRT" & action == "HOLD" & 
@@ -35,17 +36,18 @@ IB.Missed.Orders <- function(today = Sys.Date())
         filter(!is.na(action))
   
   position <- IB.04.activity %>% 
-              group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
-              summarise(model.position = 1.0*sum(ifelse(IB.action == "BUY", volume, -volume))) %>%
-              filter(model.position > 0) %>%
+              group_by(ticker, algoId, Type, DP.Method, MA.Type, Period) %>%
+              summarise(model.position = sum(volume)) %>%
+              filter(model.position != 0) %>%
               left_join(IB.00.positions %>% rename(ticker = symbol) %>%
                           group_by(ticker) %>% summarise(ticker.position = sum(position))
-                        , by = "ticker") %>%
-              filter(ticker.position >= model.position) %>% ungroup()
+                        , by = "ticker") %>% 
+              ungroup()
   
   x2 <- left_join(x1, position, 
-                  by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
-        filter(grepl("BUY", action) | (grepl("SELL", action) & model.position > 0)) %>%
+                  by = c("ticker", "algoId", "Type", "DP.Method", "MA.Type", "Period")) %>%
+        filter( (grepl("BUY", action) & is.na(model.position)) | 
+                  (grepl("SELL", action) & !is.na(model.position))) %>%
         mutate(t.price = case_when(action %in% c("BUY", "SELL") ~ round(close, 2))
                , m.price = case_when(action == "SELL" ~ sell.price,
                                      action == "STOP SELL" ~ stop.price,
@@ -58,7 +60,7 @@ IB.Missed.Orders <- function(today = Sys.Date())
   
 
   assign("IB.06.missed.orders", x2, envir = .GlobalEnv)
-  rm(today, d1, x1, x2)
+  rm(today, first.targets, d1, position, x1, x2)
 
 }
 
@@ -69,9 +71,23 @@ IB.FinishDay <- function(Force.Close = FALSE)
   {return(cat("\nWarning!!! Market is Still Open. \nCannot Shutdown the System ... "))}
   rm(NY.Time)
 
+  IB.Account.Status()
   IB.Cancel.Orders()
+  Update.Activity()
+  Update.Targets()
+  
+  IB.04.activity <- IB.04.activity %>%
+                    filter((IB.action == "BUY" & volume > 0) | 
+                             (IB.action == "SELL" & volume < 0))
+  
+  assign("IB.04.activity", IB.04.activity, envir = .GlobalEnv)
+  
   IB.Missed.Orders()
-
+  View(IB.06.missed.orders)
+  View(IB.04.activity)
+  View(IB.03.orders)
+  
+  
   h.missed <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/06.Historical.Misses.rds")) %>%
     bind_rows(IB.06.missed.orders) %>% distinct()
 

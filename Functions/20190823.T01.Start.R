@@ -11,6 +11,7 @@ IB.Parms <- list(  last.dev.date    = as.Date("2019-01-31")
                    , acctCode         = "DU1617055"   # IB Account Number
                    
                    , invest.max       = 12000         # Maximum position
+                   , invest.min       = 500           # Minimum investment in a model
                    , Start.Trading.At = 9.35          # NY Time to start buying
                    , Stop.Trading.At  = 16            # NY Time to stop trading
                    , Last.Sell.At     = 15.50         # NY Time to initiate EOD Sell
@@ -38,26 +39,24 @@ IB.Account.Status <- function()
 {
   AF.Connect <- function()
   {
-    closeAllConnections()
-    if(exists("tws", envir = .GlobalEnv) && isConnected(tws))
+    if(!exists("tws", envir = .GlobalEnv) || tws$clientId != IB.Parms[["clientId"]])
     {
-      twsDisconnect(tws)
-      rm(tws, envir = .GlobalEnv)
-    } 
-    
-    tws <- list(clientId = -1)
-    
-    # This loop makes sure that the client id is what supplied
-    while(tws$clientId != IB.Parms[["clientId"]] )
-    {
-      tws <- tryCatch({twsConnect(clientId = IB.Parms[["clientId"]])}
-                      , warning = function(w) {list(clientId = -1)}
-                      , error = function(e) {list(clientId = -2)} )
+      closeAllConnections()
+      if(exists("tws", envir = .GlobalEnv)) {rm(tws, envir = .GlobalEnv)}
+      tws <- list(clientId = -1)
+      # This loop makes sure that the client id is what supplied
+      while(tws$clientId != IB.Parms[["clientId"]] )
+      {
+        tws <- tryCatch({twsConnect(clientId = IB.Parms[["clientId"]])}
+                        , warning = function(w) {list(clientId = -1)}
+                        , error = function(e) {list(clientId = -2)} )
+      }
       
+      assign("tws", tws, envir = .GlobalEnv)
+      cat("\nConnection was Re-established\n")
       print(tws)
     }
-    
-    assign("tws", tws, envir = .GlobalEnv)
+
     setServerLogLevel(tws)
   }
   
@@ -113,13 +112,13 @@ IB.Account.Status <- function()
     
     assign("Available.Funds", x$Available.Funds, envir = .GlobalEnv)
     cat(paste0("\n\n-------------------------------", 
-               "\n: Invested   : $ ", formatC(x$Investment, format="f", big.mark=",", digits=0),
-               "\n: Position   : $ ", formatC(x$Current.Position, format="f", big.mark=",", digits=0),
-               "\n: ROI        :   ", paste0(x$ROI.investment, "%"),
-               "\n-------------------------------",
+               # "\n: Invested   : $ ", formatC(x$Investment, format="f", big.mark=",", digits=0),
+               # "\n: Position   : $ ", formatC(x$Current.Position, format="f", big.mark=",", digits=0),
+               # "\n: ROI        :   ", paste0(x$ROI.investment, "%"),
+               # "\n-------------------------------",
                "\n: Fund ROI   :   ", paste0(x$ROI.portfolio, "%"),
                "\n: Available  : $ ", formatC(x$Available.Funds, format="f", big.mark=",", digits=0),
-               "\n-------------------------------\n"  ))
+               "\n-------------------------------"  ))
     
     if(x$Available.Funds <= 1000) {cat(paste0("\nWarning!!! Available Funds running low."))}
     rm(x)

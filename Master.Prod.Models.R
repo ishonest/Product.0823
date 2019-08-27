@@ -24,7 +24,7 @@ if(file.exists(paste0(Parms$data.folder, "Trading/02.Historical.Activity.rds")))
 {
   in.hand <- readRDS(paste0(Parms$data.folder, "Trading/02.Historical.Activity.rds")) %>%
               group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
-              summarise(volume = sum(ifelse(action == "BUY", volume, -volume))) %>%
+              summarise(volume = sum(ifelse(IB.action == "BUY", volume, -volume))) %>%
               filter(!is.na(algoId))
 
   prod.models <- prod.models %>% arrange(ticker, ID, R, algoId) %>%

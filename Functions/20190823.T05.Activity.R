@@ -1,8 +1,5 @@
 Update.Activity <- function()
 {
-  # if(!exists("IB.02.actions", envir = .GlobalEnv) || !IB.Parms[["Emergency"]] & nrow(IB.02.actions) == 0)
-  # {return(cat("\nThere are NO Activity Updates ... "))}
-  
   source("./Functions/F.Additional.IB.R")
   
   good.run <- FALSE
@@ -15,11 +12,9 @@ Update.Activity <- function()
   } 
   rm(good.run)
   
-  if(is.null(x)) 
-  {
-    rm(twsExecution, req.Exec.2, req.Exec.df, print.twsExecution, envir = .GlobalEnv)
-    return(cat("\nThere were NO Recent Activity ... "))
-  }
+  rm(twsExecution, req.Exec.2, req.Exec.df, print.twsExecution, envir = .GlobalEnv)
+  
+  if(is.null(x)) {return(cat("\nThere were NO Recent Activity ... "))}
   
   suppressWarnings(
     x <- x %>%
@@ -30,8 +25,8 @@ Update.Activity <- function()
       filter(order.ts > IB.Parms[["Last.Order.Time"]] - 2) %>%
       mutate(conId = as.character(conId)
              , NY.time = as.numeric(strftime(format(order.ts, tz = "US/Eastern"), format = "%H.%M"))
-             , shares = case_when(action == "BOT" ~ shares,
-                                  action == "SLD" ~ -shares)
+             # , shares = case_when(action == "BOT" ~ shares,
+             #                      action == "SLD" ~ -shares)
              , IB.action = case_when(action == "BOT" ~ "BUY",
                                   action == "SLD" ~ "SELL")
       ) %>%
@@ -41,16 +36,16 @@ Update.Activity <- function()
                 price = weighted.mean(avgPrice, W = shares)) %>%
       ungroup()
   )
-  
+
   if(nrow(x) == 0) 
   {
     rm(x)
-    rm(twsExecution, req.Exec.2, req.Exec.df, print.twsExecution, envir = .GlobalEnv)
     return(cat("\nThere were NO Recent Activity ... "))
   }
   
+  
   ############################# In.Hand Portfolio / From Activity #############################
-  y <- IB.04.activity %>% group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
+  y <- IB.04.activity %>% group_by(algoId, ticker, Type, DP.Method, MA.Type, Period) %>%
         filter(order.ts == max(order.ts)) %>% 
         summarise(in.hand = sum(volume, na.rm = TRUE ))
   
@@ -58,36 +53,48 @@ Update.Activity <- function()
   if(IB.Parms[["Emergency"]])
   {
     z <- inner_join(y, x, by = c("ticker")) %>%
-          group_by(ticker, IB.action) %>%
-          mutate(cumvol = cumsum(in.hand)
-                 , sold = case_when(cumvol <= shares ~ in.hand,
-                                    cumvol - shares < in.hand ~ cumvol - shares,
-                                    TRUE ~ 0)
-                 , in.hand = in.hand - sold
-                 , volume = sold
-                 , Situation = "Emergency"
+          group_by(orderId, ticker, Type) %>%
+          mutate(Situation = "Emergency"
+                 , in.hand = abs(in.hand)
+                 , shares = abs(shares)
+                 , left = shares - (cumsum(in.hand) - in.hand)
+                 , shares = pmin(left, in.hand)
+                 , volume = case_when(IB.action == "BUY" ~ shares,
+                                      IB.action == "SELL" ~ -shares)
           ) %>%
-          select(algoId, ticker, DP.Method, MA.Type, Period, Situation, IB.action, 
-                 orderId, order.ts, volume, price)
+          select(ticker, algoId, Type, DP.Method, MA.Type, Period, Situation, 
+                 IB.action, orderId, order.ts, volume, price)
     
   } else
   {
-    z <- left_join(IB.02.actions, x, by = c("ticker", "IB.action")) %>%
-          filter(!is.na(orderId)) %>%
-          mutate(Situation = "Normal") %>%
-          select(algoId, ticker, DP.Method, MA.Type, Period, Situation, IB.action, 
-                 orderId, order.ts, volume, price)
+    z <- inner_join(x, IB.02.actions %>% 
+                     select(IB.action, ticker, Type, action, volume, algoId, DP.Method, MA.Type, Period)
+                   , by = c("IB.action", "ticker")) %>%
+          group_by(orderId, IB.action, ticker) %>%
+          mutate(Situation = "Normal",
+                 left = shares - (cumsum(volume) - volume),
+                 shares = pmin(left, volume),
+                 volume = case_when(IB.action == "BUY" ~ shares,
+                                    IB.action == "SELL" ~ -shares)
+          ) %>%
+          select(ticker, algoId, Type, DP.Method, MA.Type, Period, Situation,
+                 IB.action, orderId, order.ts, volume, price)
   }
   
   ############################# For Manual Override #############################
   if(nrow(z) == 0 & nrow(x) > 0)
   {
     z <- left_join(x, y, by = c("ticker")) %>% 
-          mutate(Situation = "Manual") %>% 
-          rename(volume = shares) %>% 
-          select(algoId, ticker, DP.Method, MA.Type, Period, Situation, 
+          mutate(Situation = "Manual",
+                 volume = case_when(IB.action == "BUY" ~ shares,
+                                    IB.action == "SELL" ~ -shares)
+                 ) %>% 
+          select(ticker, algoId, Type, DP.Method, MA.Type, Period, Situation, 
                  IB.action, orderId, order.ts, volume, price)  
   }
+  
+  # Sanity Check
+  z <- z %>% filter((IB.action == "BUY" & volume > 0) | (IB.action == "SELL" & volume < 0))
   
   z <- bind_rows(z, IB.04.activity) %>%
         ungroup() %>% arrange(desc(order.ts)) %>% distinct()
@@ -97,21 +104,26 @@ Update.Activity <- function()
   assign("IB.Parms", IB.Parms, envir = .GlobalEnv)
   
   rm(x, y, z)
-  rm(twsExecution, req.Exec.2, req.Exec.df, print.twsExecution, envir = .GlobalEnv)
 }
 
 Update.Targets <- function()
 {
   if(IB.Parms[["Emergency"]]) {return(cat("\n\nSystem halted due to Emergency"))}
   
-  x <- anti_join(IB.01.targets,
-                 IB.04.activity %>% distinct() %>% 
-                   group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
-                   filter(order.ts == max(order.ts)) %>%
-                   mutate(ds = as.Date(order.ts)) %>%
-                   select(ticker, algoId, DP.Method, MA.Type, Period, ds),
-                 by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period", "ds")) 
+  x1 <- IB.04.activity %>% distinct() %>% 
+        group_by(ticker, algoId, Type, DP.Method, MA.Type, Period) %>%
+        filter(order.ts == max(order.ts)) %>%
+        summarise(invested = abs(volume)*price)
   
-  assign("IB.01.targets", x, envir = .GlobalEnv)
-  rm(x)
+  # For Partial Buy Fulfillment
+  # Partial Sell Fulfillment will be taken care by IB.actions
+  x2 <- left_join(IB.01.targets, x1
+                  , by = c("ticker", "algoId", "Type", "DP.Method", "MA.Type", "Period")) %>%
+        mutate(balance = invest - invested) %>%
+        filter(is.na(balance) | balance >= IB.Parms[["invest.min"]] ) %>%
+        mutate(invest = ifelse(is.na(balance), invest, balance)) %>%
+        select(-c(invested, balance))
+
+  assign("IB.01.targets", x2, envir = .GlobalEnv)
+  rm(x1, x2)
 }

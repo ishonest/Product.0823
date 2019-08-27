@@ -16,8 +16,9 @@ IB.Order <- function()
   {
     IB.03.orders <- data.frame(t(do.call(rbind, Contract)), stringsAsFactors = FALSE) %>%
       bind_cols(data.frame(t(do.call(rbind, Order)), stringsAsFactors = FALSE)) %>%
-      select(account, parentId, orderId, conId, symbol, sectype, strike,
+      select(account, parentId, orderId, conId, orderRef, symbol, sectype, strike,
              currency, action, totalQuantity, orderType, lmtPrice, auxPrice, tif) %>%
+      rename(algoId = orderRef) %>%
       mutate(parentId = as.integer(parentId)
              , orderId = as.integer(orderId)
              , totalQuantity = as.numeric(totalQuantity)
@@ -30,7 +31,7 @@ IB.Order <- function()
     assign("IB.03.orders",  IB.03.orders, envir = .GlobalEnv)
     rm(IB.03.orders, order.type)
   }
-
+  
   for(i in 1:nrow(x))
   {
     Contract <- twsEquity(symbol = x$ticker[i], local = x$ticker[i], primary = x$Exchange[i]

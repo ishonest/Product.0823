@@ -77,37 +77,40 @@ IB.Emergency <- function()
     IB.Account.Status()
     
     x <- IB.00.positions %>%
-      filter(position != 0) %>%
-      rename(ticker = symbol, volume = position) %>%
-      select(accountName, conId, ticker, local, volume, primary, currency) %>%
-      mutate(primary = ifelse(primary == "NASDAQ", "ISLAND", primary)) %>%
-      left_join(readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds")) %>% 
-                  select(algoId, ticker) %>% distinct()
-                , by = "ticker") %>%
-      mutate(IB.action = ifelse(volume > 0, "SELL", "BUY"),
-             volume = abs(volume)) %>%
-      group_by(ticker, IB.action) %>%
-      filter(row_number() == 1)
+          filter(position != 0) %>%
+          rename(ticker = symbol, volume = position) %>%
+          select(accountName, conId, ticker, local, volume, primary, currency) %>%
+          mutate(primary = ifelse(primary == "NASDAQ", "ISLAND", primary)) %>%
+          left_join(readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds")) %>% 
+                      select(algoId, ticker) %>% distinct()
+                    , by = "ticker") %>%
+          mutate(IB.action = ifelse(volume > 0, "SELL", "BUY"),
+                 volume = abs(volume)) %>%
+          group_by(ticker, IB.action) %>%
+          filter(row_number() == 1)
     
     AF.Update.Orderbook <- function(Contract, Order, order.type = "")
     {
+      # order.type = "Order Placed"
       IB.03.orders <- data.frame(t(do.call(rbind, Contract)), stringsAsFactors = FALSE) %>%
-        bind_cols(data.frame(t(do.call(rbind, Order)), stringsAsFactors = FALSE)) %>%
-        select(account, parentId, orderId, conId, symbol, sectype, strike,
-               currency, action, totalQuantity, orderType, lmtPrice, auxPrice, tif) %>%
-        mutate(parentId = as.integer(parentId)
-               , orderId = as.integer(orderId)
-               , totalQuantity = as.numeric(totalQuantity)
-               , lmtPrice = as.numeric(lmtPrice)
-               , auxPrice = as.numeric(auxPrice)
-               , order.ts = Sys.time()
-               , order.type) %>%
-        bind_rows(IB.03.orders)
+                      bind_cols(data.frame(t(do.call(rbind, Order)), stringsAsFactors = FALSE)) %>%
+                      select(account, parentId, orderId, conId, orderRef, symbol, sectype, strike,
+                             currency, action, totalQuantity, orderType, lmtPrice, auxPrice, tif) %>%
+                      rename(algoId = orderRef) %>%
+                      mutate(parentId = as.integer(parentId)
+                             , orderId = as.integer(orderId)
+                             , totalQuantity = as.numeric(totalQuantity)
+                             , lmtPrice = as.numeric(lmtPrice)
+                             , auxPrice = as.numeric(auxPrice)
+                             , order.ts = Sys.time()
+                             , order.type) %>%
+                      bind_rows(IB.03.orders)
       
       assign("IB.03.orders",  IB.03.orders, envir = .GlobalEnv)
       rm(IB.03.orders, order.type)
     }
     
+
     if(nrow(x) > 0)
     {
       IB.Parms[["Last.Order.Time"]] <- Sys.time()
@@ -115,7 +118,7 @@ IB.Emergency <- function()
       
       for(i in 1:nrow(x))
       {
-        Contract <- twsEquity(symbol = x$ticker[i], primary = x$primary[i], local = x$ticker[i], 
+        Contract <- twsEquity(symbol = x$ticker[i], primary = x$primary[i], local = x$local[i], 
                               currency = x$currency[i], exch = "SMART")
         
         Order <- twsOrder(orderId = reqIds(tws)
@@ -128,7 +131,6 @@ IB.Emergency <- function()
                           , tif = "GTC")
         
         AF.Update.Orderbook(Contract, Order, order.type = "Order Placed")
-        
         IBrokers::placeOrder(twsconn = tws, Contract, Order)
         rm(Contract, Order, i)
       }
