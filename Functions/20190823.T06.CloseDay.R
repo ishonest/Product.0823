@@ -103,6 +103,8 @@ IB.FinishDay <- function(Force.Close = FALSE)
 
   rm(h.missed, h.activity, h.orders, Force.Close)
   rm(list = setdiff(ls(envir = .GlobalEnv), c("tws")), envir = .GlobalEnv)
+  do.call(file.remove, list(list.files(paste0(IB.Parms$data.folder, "Simulation/"), full.names = TRUE)))
+  
 }
 
 IB.FinishDay()
