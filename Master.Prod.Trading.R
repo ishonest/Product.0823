@@ -1,3 +1,4 @@
+# WARNING: Start TWS Before Proceeding
 source("./Functions/20190823.T01.Start.R")
 
 # -------------------------------------------------------------------------
@@ -6,10 +7,9 @@ source("./Functions/20190823.T01.Start.R")
 # -------------------------------------------------------------------------
 # source("./Functions/20190823.T00.Restart.R")
 # -------------------------------------------------------------------------
-
 while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.Trading.At"]])
 {
-
+  View(IB.01.targets)
   if(IB.Parms[["System.Live"]])
   {
     IB.Cancel.Orders()
@@ -18,18 +18,16 @@ while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.T
     Update.Activity()
     Update.Targets()
     View(IB.04.activity)
-    View(IB.01.targets)
     
     IB.Account.Status()
     
     IB.Actions()
+    View(IB.02.actions)    
     IB.Order()
+    View(IB.03.orders)
     IB.Action.Plots()
   }
-  
-  cat("\nCycle Complete: Next cycle will commence at", format(Sys.time() + 120, "%X"), "...\n")
-  Sys.sleep(120)
-
+  IB.Next.Run()
 }
 
 # -------------------------------------------------------------------------

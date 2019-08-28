@@ -12,6 +12,7 @@ IB.Restart <- function()
                              , action        = character()
                              , totalQuantity = numeric()
                              , orderType     = character()
+                             , orderStatus   = character()
                              , lmtPrice      = numeric()
                              , auxPrice      = numeric()
                              , tif           = character()
@@ -39,10 +40,16 @@ IB.Restart <- function()
   saveRDS(IB.03.orders, paste0(IB.Parms[["data.folder"]], "/Trading/03.Historical.Orders.rds"))
   saveRDS(IB.06.missed.orders, paste0(IB.Parms[["data.folder"]], "/Trading/06.Historical.Misses.rds"))
   
+  assign("IB.03.orders", IB.03.orders, envir = .GlobalEnv)
+  assign("IB.04.activity", IB.04.activity, envir = .GlobalEnv)
+  
+  IB.Parms[["Last.Order.Time"]] <- Sys.time()
+  assign("IB.Parms", IB.Parms, envir = .GlobalEnv)
+
   rm(IB.04.activity, IB.03.orders, IB.06.missed.orders)
+  
+  IB.Account.Status()
 }
-
-
 
 ### Close All positions before restarting
 source("./Functions/20190823.T07.Emergency.R")

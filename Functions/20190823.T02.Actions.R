@@ -44,20 +44,28 @@ IB.Actions <- function(today = Sys.Date())
     x <- IB.00.positions %>% select(symbol, position, averageCost) %>%
           rename(ticker = symbol, cost = averageCost) %>%
           left_join(d1 %>% select(ticker, close), by = "ticker") %>%
-          mutate(Investment = abs(position*cost), 
-                 Position = abs(position*close),
-                 Gain = position*(close - cost)) %>%
-          summarise(Investment = sum(Investment, na.rm = TRUE),
-                    Position = sum(Position, na.rm = TRUE),
-                    ROI = round(100*sum(Gain, na.rm = TRUE)/Investment, 2) )
+          mutate(Investment = abs(position*cost), Gain = position*(close - cost))
     
-    cat(paste0("\n: Invested   : $ ", formatC(x$Investment, format="f", big.mark=",", digits=0),
-               "\n: Position   : $ ", formatC(x$Position, format="f", big.mark=",", digits=0),
-               "\n: ROI        :   ", paste0(x$ROI, "%"),
-               "\n-------------------------------\n"))
+    x <- x %>%
+          bind_rows(data.frame(ticker = "All Holdings",
+                               Investment = sum(x$Investment, na.rm = TRUE),
+                               Gain = sum(x$Gain, na.rm = TRUE),
+                               stringsAsFactors = FALSE)
+                    ) %>%
+          mutate(Symbol = format(ticker, justify = 'left'),
+                 ROI = 100*Gain/Investment,
+                 ROI = ifelse(ROI <= 0, 
+                              paste0(formatC(ROI, format="f", digits=2), "% *"), 
+                              paste0(formatC(ROI, format="f", digits=2), "%  ")),
+                 Investment = paste(formatC(Investment, format="f", big.mark=",", digits=0), "USD")
+                 ) %>%
+          select(Symbol, Investment, ROI)
     
+    colnames(x) <- c("", "Investment", "ROI  ")
+    
+          
+    print(x, row.names = FALSE)
     rm(x)
-
   }
   
   # Eligible Orders: Based on current price only
@@ -101,7 +109,8 @@ IB.Actions <- function(today = Sys.Date())
   o2 <- left_join(o1, position, 
                  by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
         filter(grepl("BUY", action) | (grepl("SELL", action) & model.position > 0)) %>%
-        mutate(t.price = case_when(action %in% c("BUY", "SELL") ~ round(close, 2))
+        mutate(t.price = case_when(action %in% c("BUY", "SELL") ~ round(close, 2),
+                                   TRUE ~ 0)
                , m.price = case_when(action == "SELL" ~ sell.price,
                                      action == "STOP SELL" ~ stop.price,
                                      # NA if "EOD SELL"
@@ -110,9 +119,11 @@ IB.Actions <- function(today = Sys.Date())
                                     grepl("BUY", action) ~ floor(invest/t.price))
                , IB.orderType = case_when(action %in% c("BUY", "SELL") ~ "LMT",
                                           TRUE ~ "MKT")
-               , IB.action = case_when(Type == "LONG" ~ action,
-                                    Type == "SHRT" & grepl("BUY", action) ~ "SELL",
-                                    Type == "SHRT" & grepl("SELL", action) ~ "BUY")
+               , IB.action = case_when(Type == "LONG" & grepl("BUY", action) ~ "BUY",
+                                       Type == "LONG" & grepl("SELL", action) ~ "SELL",
+                                       Type == "SHRT" & grepl("BUY", action) ~ "SELL",
+                                       Type == "SHRT" & grepl("SELL", action) ~ "BUY"
+                                       )
                ) %>%
         select(ticker, ds, Type, action, IB.action, IB.orderType, volume, t.price, m.price, 
                algoId, ID, DP.Method, MA.Type, Period, Exchange, tickerID, NY.Time)

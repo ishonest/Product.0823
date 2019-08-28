@@ -25,8 +25,6 @@ Update.Activity <- function()
       filter(order.ts > IB.Parms[["Last.Order.Time"]] - 2) %>%
       mutate(conId = as.character(conId)
              , NY.time = as.numeric(strftime(format(order.ts, tz = "US/Eastern"), format = "%H.%M"))
-             # , shares = case_when(action == "BOT" ~ shares,
-             #                      action == "SLD" ~ -shares)
              , IB.action = case_when(action == "BOT" ~ "BUY",
                                   action == "SLD" ~ "SELL")
       ) %>%

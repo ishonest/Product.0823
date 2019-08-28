@@ -27,6 +27,7 @@ if(file.exists(paste0(Parms$data.folder, "Trading/02.Historical.Activity.rds")))
               summarise(volume = sum(ifelse(IB.action == "BUY", volume, -volume))) %>%
               filter(!is.na(algoId))
 
+  # Selecting Models in buyalgos or having a position
   prod.models <- prod.models %>% arrange(ticker, ID, R, algoId) %>%
                   left_join(in.hand, by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
                   filter(algoId %in% Parms$buyalgos | !is.na(volume)) %>%
@@ -82,24 +83,22 @@ source("./Functions/20190823.Trading.Simulation.R")
 
 if(file.exists(paste0(Parms$data.folder, "Trading/06.Historical.Misses.rds")))
 {
-  hist.miss <- readRDS(paste0(Parms$data.folder, "Trading/06.Historical.Misses.rds"))
+  hist.miss <- readRDS(paste0(Parms$data.folder, "Trading/06.Historical.Misses.rds")) %>% 
+                select(-c(volume, Type, m.price, tickerID, Exchange)) %>%
+                rename(missed = action)
+  
   if(nrow(hist.miss) == 0)
   {
-    hist.miss <- data.frame(ds = as.Date(character()), ticker = character()
-                            , action = character(), volume = numeric(), m.price = numeric()
-                            , algoId = character(), Type = character()
-                            , DP.Method = character(), MA.Type = character()
-                            , Period = numeric() , tickerID = numeric(), Exchange = character()
+    hist.miss <- data.frame(  ticker = character(), ds = as.Date(character())
+                            , missed = character(), algoId = character(), ID = integer()
+                            , DP.Method = character(), MA.Type = character(), Period = numeric()
                             , stringsAsFactors = FALSE )
-    
   }
 } else
 {
-  hist.miss <- data.frame(ds = as.Date(character()), ticker = character()
-                          , action = character(), volume = numeric(), m.price = numeric()
-                          , algoId = character(), Type = character()
-                          , DP.Method = character(), MA.Type = character()
-                          , Period = numeric() , tickerID = numeric(), Exchange = character()
+  hist.miss <- data.frame(  ticker = character(), ds = as.Date(character())
+                          , missed = character(), algoId = character(), ID = integer()
+                          , DP.Method = character(), MA.Type = character(), Period = numeric()
                           , stringsAsFactors = FALSE )
 }
 
@@ -115,7 +114,7 @@ targets <- foreach(ticker = stocks, .combine = bind_rows, .packages = c("dplyr",
                    .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove'
                    ) %dopar%
 {
-  # ticker = "BRY"
+  # ticker = "CBMG"
   d1 <- all.d1 %>% filter(ticker == !!ticker) %>% ungroup() %>%
         select(ds, volume, open, low, high, close) %>% arrange(ds) %>% 
         mutate(ROI.l = -zoo::rollmax(-low, 5, fill = NA, align = "left")/lag(close)
@@ -147,9 +146,7 @@ targets <- foreach(ticker = stocks, .combine = bind_rows, .packages = c("dplyr",
                     , by = c("algoId" , "ticker", "ID", "DP.Method", "MA.Type", "Period", "R")) %>%
           group_by(ticker, ID, algoId) %>%
           filter(!all(is.na(R.low))) %>%
-          left_join(hist.miss %>% select(-c(volume, m.price, tickerID, Exchange)) %>%
-                      rename(missed = action)            
-                    , by = c("ds", "ticker", "algoId", "DP.Method", "MA.Type", "Period", "Type"))
+          left_join(hist.miss, by = c("ds", "ticker", "algoId", "ID", "DP.Method", "MA.Type", "Period"))
 
   sim <- foreach(algo.ID = Parms$algoIds, .combine = bind_rows, .errorhandling = 'remove') %:%
           foreach(model.ID = unique(all$ID), .combine = bind_rows, .errorhandling = 'remove') %do%

@@ -23,6 +23,7 @@ IB.Parms <- list(  last.dev.date    = as.Date("2019-01-31")
 
 # -------------------------------------------------------------------------
 rm(list = setdiff(ls(envir = .GlobalEnv), c("IB.Parms")), envir = .GlobalEnv)
+closeAllConnections()
 options(scipen = 3, digits = 8, digits.secs = 0)
 set.seed(1024)
 library(IBrokers)
@@ -62,7 +63,7 @@ IB.Account.Status <- function()
   
   AF.Connect()
 
-  cancelAccountUpdates(tws)
+  cancelAccountUpdates(conn = tws)
   d <- reqAccountUpdates(conn = tws, acctCode = IB.Parms[["acctCode"]], subscribe = TRUE)
 
   assign("IB.00.account",
@@ -111,14 +112,10 @@ IB.Account.Status <- function()
                     ROI.portfolio = round(100*ROI.portfolio/IB.Parms[["invest.max"]], 2))
     
     assign("Available.Funds", x$Available.Funds, envir = .GlobalEnv)
-    cat(paste0("\n\n-------------------------------", 
-               # "\n: Invested   : $ ", formatC(x$Investment, format="f", big.mark=",", digits=0),
-               # "\n: Position   : $ ", formatC(x$Current.Position, format="f", big.mark=",", digits=0),
-               # "\n: ROI        :   ", paste0(x$ROI.investment, "%"),
-               # "\n-------------------------------",
+    cat(paste0("\n-------------------------------", 
                "\n: Fund ROI   :   ", paste0(x$ROI.portfolio, "%"),
                "\n: Available  : $ ", formatC(x$Available.Funds, format="f", big.mark=",", digits=0),
-               "\n-------------------------------"  ))
+               "\n-------------------------------\n"  ))
     
     if(x$Available.Funds <= 1000) {cat(paste0("\nWarning!!! Available Funds running low."))}
     rm(x)
@@ -227,82 +224,28 @@ IB.StartDay <- function()
   
   IB.Account.Status()
   IB.System.Status()
+}
 
-  AF.Missed.Order.Mgmt <- function()
+IB.Next.Run <- function()
+{
+  NY.Time <- as.numeric(strftime(format(Sys.time(), tz = "US/Eastern"), format = "%H.%M"))
+  if(NY.Time < IB.Parms$Start.Trading.At)
   {
-    source("./Functions/F.Trading.Days.R")
-    missed <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/06.Historical.Misses.rds")) %>%
-      filter(ds == PrevTradingDate())
-    
-    rm(NextTradingDate, PrevTradingDate, TradingDates, envir = .GlobalEnv)
-    if(nrow(missed) > 0)
-    {
-      missed.buy <- data.frame()
-      for(i in 1:nrow(missed))
-      {
-        if(missed$action[i] == "BUY")
-        {
-          y <- readRDS(paste0(IB.Parms[["data.folder"]], "Simulation/", missed$ticker[i], ".rds")) %>%
-            semi_join(missed, by = c("ds", "ticker", "DP.Method", "MA.Type", "Period", "algoId")) %>%
-            rename(missed = invest) %>%
-            select(ticker, algoId, DP.Method, MA.Type, Period, missed) 
-          
-          missed.buy <- bind_rows(missed.buy, y)
-          rm(y)
-        }
-        
-        if(missed$action[i] == "SELL")
-        {
-          Contract <- twsEquity(symbol = missed$ticker[i], local = missed$ticker[i]
-                                , primary = missed$Exchange[i], currency = "USD", exch = "SMART")
-          
-          Order <- twsOrder(orderId = reqIds(tws) 
-                            , action = "SELL"
-                            , clientId = tws$clientId
-                            , account = IB.Parms[["acctCode"]]
-                            , totalQuantity = missed$volume[i]
-                            , orderType = "MKT"
-                            , tif = "DAY")
-          
-          Update.Orderbook(Contract, Order, order.type = "Missed Order Placed")
-          if(i %% 40 == 0) {Sys.sleep(1)} # Limitations of API: Can process only 50 orders/second
-          IBrokers::placeOrder(twsconn = tws, Contract, Order)
-          rm(Contract, Order)
-        }
-        
-        rm(i)
-      }
-      
-      if(nrow(missed.buy) > 0)
-      {
-        x <- IB.01.targets %>%
-          left_join(missed.buy, by = c("algoId", "ticker", "DP.Method", "MA.Type", "Period")) %>%
-          mutate(action = case_when(is.na(missed) ~ action),
-                 invest = case_when(is.na(missed) ~ invest,
-                                    TRUE ~ missed)
-          ) %>%
-          select(-missed)
-        
-        assign("IB.01.targets", x, envir = .GlobalEnv)
-        rm(x)
-      }
-      
-      if(sum(missed$action == "SELL", na.rm = TRUE) > 0)
-      {
-        cat("\nSystem is halted for 4 minutes to execute the missed orders ...\n")
-        Sys.sleep(240)
-      }
-      rm(missed.buy)
-    } else 
-    {
-      cat("\nThere are NO missed / carryforwarded orders from last trading session")   
-    }
-    
-    rm(missed)
+    next.run <- difftime(strptime(paste(Sys.Date(), IB.Parms$Start.Trading.At), "%Y-%m-%d %H.%M", 
+                           tz = "US/Eastern"),
+                        lubridate::with_tz(Sys.time(), tzone = "US/Eastern"),
+                        units = "secs" 
+                        ) %>% as.numeric() %>% ceiling()
+  } else
+  {
+    next.run <- 120
   }
   
-  AF.Missed.Order.Mgmt()
-  rm(AF.Missed.Order.Mgmt)
+  cat("\nCycle Complete: Next cycle will commence at", format(Sys.time() + next.run, "%X"), "...\n")
+  Sys.sleep(next.run)
+  rm(next.run, NY.Time)
+  cat("\n--------------------------------------------------------------\n")
+  IB.System.Status()
 }
 
 IB.StartDay()
