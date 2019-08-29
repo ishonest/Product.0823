@@ -112,12 +112,12 @@ IB.Account.Status <- function()
                     ROI.portfolio = round(100*ROI.portfolio/IB.Parms[["invest.max"]], 2))
     
     assign("Available.Funds", x$Available.Funds, envir = .GlobalEnv)
-    cat(paste0("\n-------------------------------", 
+    cat(paste0("\n------------------------------------------------", 
                "\n: Fund ROI   :   ", paste0(x$ROI.portfolio, "%"),
                "\n: Available  : $ ", formatC(x$Available.Funds, format="f", big.mark=",", digits=0),
-               "\n-------------------------------\n"  ))
+               "\n------------------------------------------------\n"  ))
     
-    if(x$Available.Funds <= 1000) {cat(paste0("\nWarning!!! Available Funds running low."))}
+    if(x$Available.Funds <= 1000) {cat("\nWarning!!! Available Funds running low.\n")}
     rm(x)
     
   } else
@@ -132,7 +132,7 @@ IB.Account.Status <- function()
 
 IB.System.Status <- function()
 {
-  source("./Functions/F.Trading.Days.R")
+  source("./Functions/20190823.M00.Trading.Days.R")
   NY.Time <- round(as.numeric(strftime(format(Sys.time(), tz = "US/Eastern"), format = "%H.%M")), 2)
   Next.Day <- format(NextTradingDate(), '%A, %B %d, %Y')
   Trade.Days <- TradingDates()
@@ -212,6 +212,13 @@ IB.System.Status <- function()
 
 IB.StartDay <- function()
 {
+  source("./Functions/20190823.M00.Trading.Days.R")
+  assign("IB.00.Latest"
+         , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds")) %>% 
+           filter(ds == PrevTradingDate()) %>% select(-ds)
+         , envir = .GlobalEnv)
+  rm(NextTradingDate, PrevTradingDate, TradingDates, envir = .GlobalEnv)
+  
   assign("IB.01.targets"
          , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds"))
          , envir = .GlobalEnv)
@@ -219,6 +226,7 @@ IB.StartDay <- function()
   assign("IB.04.activity"
          , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds"))
          , envir = .GlobalEnv)
+  
   IB.Parms[["Last.Order.Time"]] <- Sys.time()
   assign("IB.Parms", IB.Parms, envir = .GlobalEnv)
   

@@ -44,28 +44,41 @@ IB.Actions <- function(today = Sys.Date())
     x <- IB.00.positions %>% select(symbol, position, averageCost) %>%
           rename(ticker = symbol, cost = averageCost) %>%
           left_join(d1 %>% select(ticker, close), by = "ticker") %>%
-          mutate(Investment = abs(position*cost), Gain = position*(close - cost))
+          mutate(Investment = abs(position*cost), Gain = position*(close - cost),
+                 Type = ifelse(position > 0, "LONG", "SHORT")) %>%
+          arrange(Type, ticker)
     
     x <- x %>%
-          bind_rows(data.frame(ticker = "All Holdings",
+          bind_rows(data.frame(ticker = "Overall >>", Type = "",
                                Investment = sum(x$Investment, na.rm = TRUE),
                                Gain = sum(x$Gain, na.rm = TRUE),
                                stringsAsFactors = FALSE)
                     ) %>%
-          mutate(Symbol = format(ticker, justify = 'left'),
+          mutate(Type = format(Type, justify = 'left'),
+                 Symbol = format(ticker, justify = 'left'),
                  ROI = 100*Gain/Investment,
                  ROI = ifelse(ROI <= 0, 
                               paste0(formatC(ROI, format="f", digits=2), "% *"), 
                               paste0(formatC(ROI, format="f", digits=2), "%  ")),
-                 Investment = paste(formatC(Investment, format="f", big.mark=",", digits=0), "USD")
+                 Investment = paste(formatC(Investment, format="f", big.mark=",", digits=0), "US")
                  ) %>%
-          select(Symbol, Investment, ROI)
+          select(Type, Symbol, Investment, ROI) 
     
-    colnames(x) <- c("", "Investment", "ROI  ")
+    y <- x %>% select(Symbol, ROI) %>% rename("Last ROI  " = ROI)
     
-          
+    if(exists("IB.00.Latest", envir = .GlobalEnv))
+    {
+      x <- left_join(x, IB.00.Latest, by = "Symbol")
+      colnames(x) <- c("", "", "Investment", "ROI  ", "Last ROI  ")
+    } else
+    {
+      colnames(x) <- c("", "", "Investment", "ROI  ")
+    }
+
+    assign("IB.00.Latest", y, envir = .GlobalEnv)
     print(x, row.names = FALSE)
-    rm(x)
+    cat("------------------------------------------------\n")
+    rm(x, y)
   }
   
   # Eligible Orders: Based on current price only

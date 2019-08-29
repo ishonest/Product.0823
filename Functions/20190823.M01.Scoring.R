@@ -107,7 +107,7 @@ Get.Data.Clean <- function(d1, min.trade = 100000, min.tdays = 250, bad.jumps = 
   }
   rm(in.portfolio)
   
-  source("./Functions/F.Trading.Days.R")
+  source("./Functions/20190823.M00.Trading.Days.R")
   
   d1 <- d1 %>% distinct()
   if(nrow(d1) < min.tdays) 
@@ -332,7 +332,7 @@ Get.Incremental.Data <- function(stocks, first.date)
     d1 <- foreach(ticker = stocks, .combine = bind_rows
                   , .errorhandling = 'remove', .packages = c("BatchGetSymbols", "timeDate") ) %dopar%
           {
-            source("./Functions/F.Trading.Days.R")
+            source("./Functions/20190823.M00.Trading.Days.R")
             # ticker = stocks[1]
             d1 <- BatchGetSymbols::get.clean.data(ticker, src = "yahoo", 
                                                   first.date, last.date = Sys.Date() ) %>%

@@ -62,7 +62,7 @@ IB.Cancel.Orders <- function()
                      outsideRTH = X19, account = X20, algoId = X23, parentId = X25,
                      orderStatus = X77
               ) %>%
-              filter(!orderStatus %in% c("Filled", "Submitted")) %>%
+              filter(!orderStatus %in% c("Filled", "PreSubmitted")) %>%
               select(account, parentId, orderId, orderStatus, algoId, conId, symbol, sectype, 
                      strike, currency, action, totalQuantity, orderType, lmtPrice, auxPrice, tif, 
                      IB.Version) %>%

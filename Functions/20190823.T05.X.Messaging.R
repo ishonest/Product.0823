@@ -1,7 +1,6 @@
 # Source: https://stackoverflow.com/questions/35559742/reqexecutions-ibrokers-package
 
-twsExecution <- function(
-                          execId = NA_character_,
+twsExecution <- function( execId = NA_character_,
                           time = NA_character_,
                           acctNumber = NA_character_,
                           exchange = NA_character_,
@@ -190,11 +189,3 @@ req.Exec.df <- function(...) {
   res <- req.Exec.2(...);
   do.call(rbind,lapply(res,function(e) do.call(data.frame,c(list(reqId=e$reqId),e$contract,e$execution,stringsAsFactors=F))));
 }; ## end req.Exec.df()
-
-
-## Example
-# IB.Connect()
-# (function(x) c(typeof(x),mode(x),class(x)))(tws)
-# ls(tws)
-# reqCurrentTime(tws)
-# x <- req.Exec.df(tws)

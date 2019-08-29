@@ -83,6 +83,13 @@ IB.FinishDay <- function(Force.Close = FALSE)
   
   assign("IB.04.activity", IB.04.activity, envir = .GlobalEnv)
   
+  IB.Actions()
+  IB.00.Latest <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds")) %>%
+                  bind_rows(IB.00.Latest %>% mutate(ds = Sys.Date())) %>%
+                  distinct()
+  
+  saveRDS(IB.00.Latest, paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds"))
+  
   IB.Missed.Orders()
   View(IB.06.missed.orders)
   View(IB.04.activity)
@@ -101,9 +108,9 @@ IB.FinishDay <- function(Force.Close = FALSE)
   saveRDS(h.activity, paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds"))
   saveRDS(h.orders, paste0(IB.Parms[["data.folder"]], "Trading/03.Historical.Orders.rds"))
 
+  do.call(file.remove, list(list.files(paste0(IB.Parms$data.folder, "Simulation/"), full.names = TRUE)))
   rm(h.missed, h.activity, h.orders, Force.Close)
   rm(list = setdiff(ls(envir = .GlobalEnv), c("tws")), envir = .GlobalEnv)
-  do.call(file.remove, list(list.files(paste0(IB.Parms$data.folder, "Simulation/"), full.names = TRUE)))
   
 }
 

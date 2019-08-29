@@ -1,6 +1,6 @@
 Update.Activity <- function()
 {
-  source("./Functions/F.Additional.IB.R")
+  source("./Functions/20190823.T05.X.Messaging.R")
   
   good.run <- FALSE
   while(!good.run)
@@ -18,21 +18,21 @@ Update.Activity <- function()
   
   suppressWarnings(
     x <- x %>%
-      select(conId, orderId, symbol, side, time, shares, price, avgPrice) %>%
-      rename(ticker = symbol, action = side) %>%
-      mutate(order.ts = as.POSIXct(time, format="%Y%m%d %H:%M:%S",tz = Sys.timezone())) %>%
-      # There is a 2 second clock diff of IB / System
-      filter(order.ts > IB.Parms[["Last.Order.Time"]] - 2) %>%
-      mutate(conId = as.character(conId)
-             , NY.time = as.numeric(strftime(format(order.ts, tz = "US/Eastern"), format = "%H.%M"))
-             , IB.action = case_when(action == "BOT" ~ "BUY",
-                                  action == "SLD" ~ "SELL")
-      ) %>%
-      group_by(orderId, IB.action, ticker) %>%
-      summarise(order.ts = max(order.ts, na.rm = TRUE),
-                shares = sum(shares),
-                price = weighted.mean(avgPrice, W = shares)) %>%
-      ungroup()
+          select(conId, orderId, symbol, side, time, shares, price, avgPrice) %>%
+          rename(ticker = symbol, action = side) %>%
+          mutate(order.ts = as.POSIXct(time, format="%Y%m%d %H:%M:%S",tz = Sys.timezone())) %>%
+          # There is a 2 second clock diff of IB / System
+          filter(order.ts > IB.Parms[["Last.Order.Time"]] - 2) %>%
+          mutate(conId = as.character(conId)
+                 , NY.time = as.numeric(strftime(format(order.ts, tz = "US/Eastern"), format = "%H.%M"))
+                 , IB.action = case_when(action == "BOT" ~ "BUY",
+                                      action == "SLD" ~ "SELL")
+          ) %>%
+          group_by(orderId, IB.action, ticker) %>%
+          summarise(order.ts = max(order.ts, na.rm = TRUE),
+                    shares = sum(shares),
+                    price = weighted.mean(avgPrice, W = shares)) %>%
+          ungroup()
   )
 
   if(nrow(x) == 0) 
