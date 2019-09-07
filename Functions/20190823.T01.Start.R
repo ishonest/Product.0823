@@ -10,7 +10,7 @@ IB.Parms <- list(  last.dev.date    = as.Date("2019-01-31")
                    , clientId         = 100           # Must be a positive integer
                    , acctCode         = "DU1617055"   # IB Account Number
                    
-                   , invest.max       = 12000         # Maximum position
+                   , invest.max       = 25000         # Maximum position
                    , invest.min       = 500           # Minimum investment in a model
                    , Start.Trading.At = 9.35          # NY Time to start buying
                    , Stop.Trading.At  = 16            # NY Time to stop trading

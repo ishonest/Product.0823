@@ -21,30 +21,26 @@ for (algoId in Parms$algoIds)
 }
 
 # Selecting Models in buyalgos or having a position
-if(file.exists(paste0(Parms$data.folder, "Trading/02.Historical.Activity.rds")))
+if(file.exists(paste0(Parms$data.folder, "Trading/00.Latest.rds")))
 {
-  in.hand <- readRDS(paste0(Parms$data.folder, "Trading/02.Historical.Activity.rds")) %>%
-              group_by(ticker, algoId, DP.Method, MA.Type, Period, Type) %>%
-              summarise(volume = sum(volume, na.rm = TRUE))
+  in.hand <- readRDS(paste0(Parms$data.folder, "Trading/00.Latest.rds"))
 
   prod.models <- prod.models %>% arrange(ticker, ID, R, algoId) %>%
-                  left_join(in.hand, by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period", "Type")) %>%
+                  left_join(in.hand, by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
                   filter(algoId %in% Parms$buyalgos | !is.na(volume)) %>%
                   select(-volume)
-  rm(in.hand)
 }
 
 hist.d1 <- readRDS(paste0(Parms$data.folder, "Summary/Clean.Prices.rds")) %>% 
             filter(ticker %in% unique(prod.models$ticker))
 
 # -------------------------------------------------------------------------
-# Incremental Data Pull
+# Incremental Data Pull: Works in the middle of the trading
 # -------------------------------------------------------------------------
 all.d1 <- Get.Incremental.Data(stocks = unique(hist.d1$ticker),
                                first.date = max(hist.d1$ds))
 
 rm(hist.d1)
-
 # -------------------------------------------------------------------------
 # Rescoring with New Data
 # -------------------------------------------------------------------------
@@ -56,19 +52,18 @@ stocks <- setdiff(unique(all.d1$ticker),
 
 foreach(ticker = stocks
         , .export = c("AF.LN", "AF.MALN"), .packages = c("dplyr", "foreach")
-        , .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove'
-) %dopar%
-{
-  # ticker <- unique(prod.models$ticker)[1]
-  d1 <- all.d1 %>% filter(ticker == !!ticker)
-  T.models <- prod.models %>% filter(ticker == !!ticker) %>%
-                select(DP.Method, MA.Type, Period, ID) %>% distinct()
-    
-  Get.Model.Scores(ticker, d1, T.models, Type = "Production")
-  saveRDS(ticker, paste0(Parms$data.folder, "Process.Tracker/", ticker, ".rds"))
-  
-  rm(ticker, d1, T.models)
-}
+        , .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove' ) %dopar%
+        {
+          # ticker <- "ODT"
+          d1 <- all.d1 %>% filter(ticker == !!ticker)
+          T.models <- prod.models %>% filter(ticker == !!ticker) %>%
+                        select(DP.Method, MA.Type, Period, ID) %>% distinct()
+            
+          Get.Model.Scores(ticker, d1, T.models, Type = "Production")
+          saveRDS(ticker, paste0(Parms$data.folder, "Process.Tracker/", ticker, ".rds"))
+          
+          rm(ticker, d1, T.models)
+        }
 
 rm(list = lsf.str())
 rm(stocks)
@@ -79,27 +74,6 @@ rm(stocks)
 # Keeps record of the holding investment for sell
 # -------------------------------------------------------------------------
 source("./Functions/20190823.M02.Simulation.R")
-
-if(file.exists(paste0(Parms$data.folder, "Trading/06.Historical.Misses.rds")))
-{
-  hist.miss <- readRDS(paste0(Parms$data.folder, "Trading/06.Historical.Misses.rds")) %>% 
-                select(-c(volume, Type, m.price, tickerID, Exchange)) %>%
-                rename(missed = action)
-  
-  if(nrow(hist.miss) == 0)
-  {
-    hist.miss <- data.frame(  ticker = character(), ds = as.Date(character())
-                            , missed = character(), algoId = character(), ID = integer()
-                            , DP.Method = character(), MA.Type = character(), Period = numeric()
-                            , stringsAsFactors = FALSE )
-  }
-} else
-{
-  hist.miss <- data.frame(  ticker = character(), ds = as.Date(character())
-                          , missed = character(), algoId = character(), ID = integer()
-                          , DP.Method = character(), MA.Type = character(), Period = numeric()
-                          , stringsAsFactors = FALSE )
-}
 
 do.call(file.remove,
         list(list.files(paste0(Parms$data.folder, c("Process.Tracker/", "Simulation/"))
@@ -113,7 +87,7 @@ targets <- foreach(ticker = stocks, .combine = bind_rows, .packages = c("dplyr",
                    .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove'
                    ) %dopar%
 {
-  # ticker = "RWLK"
+  # ticker = "PTI"
   targets <- Get.Simulation(ticker)
   return(targets)
 }
@@ -132,4 +106,4 @@ do.call(file.remove, list(list.files(paste0(Parms$data.folder, c("Process.Tracke
 
 stopCluster(cl)
 rm(list = ls())
-
+gc()

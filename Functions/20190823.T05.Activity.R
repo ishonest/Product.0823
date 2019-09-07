@@ -63,7 +63,7 @@ Update.Activity <- function()
           select(ticker, algoId, Type, DP.Method, MA.Type, Period, Situation, 
                  IB.action, orderId, order.ts, volume, price)
     
-  } else
+  } else if(exists("IB.02.actions", envir = .GlobalEnv))
   {
     z <- inner_join(x, IB.02.actions %>% 
                      select(IB.action, ticker, Type, action, volume, algoId, DP.Method, MA.Type, Period)
@@ -77,7 +77,7 @@ Update.Activity <- function()
           ) %>%
           select(ticker, algoId, Type, DP.Method, MA.Type, Period, Situation,
                  IB.action, orderId, order.ts, volume, price)
-  }
+  } else {z <- data.frame(stringsAsFactors = FALSE)}
   
   ############################# For Manual Override #############################
   if(nrow(z) == 0 & nrow(x) > 0)
@@ -111,6 +111,7 @@ Update.Targets <- function()
   x1 <- IB.04.activity %>% distinct() %>% 
         group_by(ticker, algoId, Type, DP.Method, MA.Type, Period) %>%
         filter(order.ts == max(order.ts)) %>%
+        filter((Type == "LONG" & IB.action == "BUY") | (Type == "SHRT" & IB.action == "SELL")) %>%
         summarise(invested = abs(volume)*price)
   
   # For Partial Buy Fulfillment

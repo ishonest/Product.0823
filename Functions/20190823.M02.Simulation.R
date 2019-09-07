@@ -169,12 +169,44 @@ AF.simulate.hedge <- function(df, Process = "Development")
   
   op <- bind_cols(op, data.frame(continue.trading, action, capacity, ROI, invest.period
                                  , stringsAsFactors = FALSE)) %>%
+        
+        # Provisions for Missed Sell
+        mutate(missed.sell = case_when(!is.na(in.hand) & 
+                                         row_number() >= max(which(grepl("SELL", action))) ~ 1,
+                                       TRUE ~ 0)
+               , action = ifelse(missed.sell == 1, "MISSED SELL", action)
+               , Type = ifelse(missed.sell == 1, zoo::na.locf(Type), Type)
+               , signal = ifelse(missed.sell == 1, zoo::na.locf(signal), signal)
+               , sell.price = ifelse(missed.sell == 1 & is.na(sell.price), zoo::na.locf(sell.price), sell.price)
+               , stop.price = ifelse(missed.sell == 1 & is.na(stop.price), zoo::na.locf(stop.price), stop.price)
+               , continue.trading = ifelse(missed.sell == 1, 1, continue.trading)
+               , ROI = ifelse(missed.sell == 1, NA, ROI)
+               , invest.period = ifelse(missed.sell == 1, NA, invest.period) 
+               ) %>%
+        select(-missed.sell) %>%
+        
+        # Provisions for Missed Buy
+        mutate(missed.buy = case_when(is.na(in.hand) & 
+                                        !is.na(last(action)) & last(action) == "HOLD" &
+                                        row_number() >= max(which(grepl("BUY", action))) ~ 1,
+                                      TRUE ~ 0
+                                      )
+               , action = ifelse(missed.buy == 1, "MISSED BUY", action)
+               , capacity = ifelse(missed.buy == 1, NA, capacity)
+               ) %>% 
+        select(-missed.buy) %>%
+        
+        # Removing Redundant Price Points
         mutate(buy.price = case_when(continue.trading > 0 ~ buy.price)
                , sell.price = case_when(continue.trading > 0 ~ sell.price)
                , stop.price = case_when(continue.trading > 0 ~ stop.price)
                , last.sell = case_when(continue.trading > 0 ~ last.sell)
         ) %>%
-        select(-continue.trading)
+        select(-continue.trading) %>%
+        # Provisions for Last Day
+        mutate(action = case_when(row_number() == n() & is.na(action) & !is.na(buy.price) & is.na(in.hand) ~ "CAN BUY", 
+                                  row_number() == n() & !is.na(action) & action == "HOLD" ~ "CAN SELL",
+                                  TRUE ~ action))
   
   rm(buy.signal, sell.signal, stop.signal, buy.price, sell.price, stop.price, last.sell
      , cost, type, holding.days, trade.val, continue
@@ -199,13 +231,6 @@ AF.simulate.20190823 <- function(sim)
                    , Type = case_when(sell.window == 1 ~ Type)
                    , signal = AF.Signal.Strength(window = sell.window, Type)
                    
-                   # Adjusted for Missed Buys
-                   , buy.window = case_when(is.na(missed) ~ buy.window,
-                                            !is.na(missed) & missed != "BUY" ~ buy.window)
-                   
-                   , sell.window = case_when(is.na(missed) ~ sell.window,
-                                             !is.na(missed) & missed != "BUY" ~ sell.window)
-
                    , buy.price  = round(R.buy*lag(close), 2)
                    , buy.price  = buy.window*zoo::na.locf(buy.price, na.rm = FALSE)
                    
@@ -225,23 +250,23 @@ AF.simulate.20190823 <- function(sim)
                    , last.sell = case_when(sell.window == 1 & is.na(buy.window) & !is.na(close) ~ close,
                                            sell.window == 1 & is.na(buy.window) & is.na(close) ~ 0)
           ) %>%
-          select(-c(signal, missed)) %>%
           AF.simulate.hedge(., Process = "Production") 
   
   return(sim)
 }
 
 # -------------------------------------------------------------------------
-
 Get.Simulation <- function(ticker)
 {
+  # ticker = "USX"
   d1 <- all.d1 %>% filter(ticker == !!ticker) %>% ungroup() %>%
         select(ds, volume, open, low, high, close) %>% arrange(ds) %>% 
         mutate(ROI.l = -zoo::rollmax(-low, 5, fill = NA, align = "left")/lag(close)
                , ROI.h = zoo::rollmax(high, 5, fill = NA, align = "left")/lag(close) )
   
-  all <- readRDS(paste0(Parms$data.folder, "Scores/", ticker, ".rds"))
-  all <- left_join(all, d1, by = "ds") %>% mutate(Score = round(Score, 4))
+  all <- readRDS(paste0(Parms$data.folder, "Scores/", ticker, ".rds")) %>%
+          left_join(d1, by = "ds") %>% 
+          mutate(Score = round(Score, 4))
   
   if(is.null(all) || nrow(all) == 0)
   {
@@ -266,13 +291,15 @@ Get.Simulation <- function(ticker)
                   , by = c("algoId" , "ticker", "ID", "DP.Method", "MA.Type", "Period", "R")) %>%
         group_by(ticker, ID, algoId) %>%
         filter(!all(is.na(R.low))) %>%
-        left_join(hist.miss, by = c("ds", "ticker", "algoId", "ID", "DP.Method", "MA.Type", "Period"))
+        left_join(in.hand %>% rename(in.hand = volume),
+                  by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) 
+        # left_join(hist.miss, by = c("ds", "ticker", "algoId", "ID", "DP.Method", "MA.Type", "Period"))
   
   sim <- foreach(algo.ID = Parms$algoIds, .combine = bind_rows, .errorhandling = 'remove') %:%
           foreach(model.ID = unique(all$ID), .combine = bind_rows, .errorhandling = 'remove') %do%
           {
             # algo.ID = Parms$algoIds[1]
-            # model.ID = 168
+            # model.ID = 170
             sim <- all %>% filter(ID == model.ID, algoId == algo.ID) 
             
             if(algo.ID == "20190823" & nrow(sim) > 0)
@@ -286,48 +313,47 @@ Get.Simulation <- function(ticker)
   # Filters investment in more than 3 models
   # Assigns the investment value
   # Keeps record of the holding investment for sell
-  can.buy <- sim %>% group_by(ticker, ds) %>%
-              summarise(BOD.in.hand = sum(!is.na(action))) %>% ungroup() %>% 
-              filter(ds == max(ds)) %>% select(BOD.in.hand) %>% as.numeric()
-  can.buy <- floor(max(Parms$invest.max.ticker/Parms$invest.max.model - can.buy, 0))
+  bought <- in.hand %>% filter(ticker == !!ticker) %>% nrow()
+  can.buy <- floor(max(Parms$invest.max.ticker/Parms$invest.max.model - bought, 0))
+  rm(bought)
   
   suppressWarnings
   {
-    sim <- sim %>% 
-            # # Select today's targets
-            filter(ds == max(ds)) %>%
-            filter(!is.na(buy.price) | !is.na(sell.price)) %>%
+    today <- sim %>% 
+            mutate(units = case_when(grepl("SELL", action) ~ abs(in.hand),
+                                     grepl("BUY", action) ~ floor(pmin(Parms$max.capacity*lag(volume),
+                                                                       Parms$invest.max.model/buy.price)))) %>%
+            filter(ds == max(ds) & !is.na(action)) %>%
+            # # Push Missed Buys for 3 days max
+            filter((action == "MISSED BUY" & signal <= 3) | action != "MISSED BUY") %>%
             # # Filter within capacity only
-            group_by(action, Type) %>% 
-            mutate(rank = case_when(Type == "LONG" ~ rank(-buy.price, ties.method = "min"),
-                                    Type == "SHRT" ~ rank(buy.price, ties.method = "min"))) %>%
-            filter(!is.na(action) | rank <= can.buy) %>%
-            # # Filter HOLD or Can be Bought
-            filter(!is.na(buy.price) | grepl("HOLD", action)) %>%
-            # # Select the series of these candidates
-            ungroup() %>% select(algoId, ID) %>% inner_join(sim, by = c("algoId", "ID")) %>%
-            # # Assign buying limits based on yesterday's trade volumes
-            group_by(algoId, ID) %>% arrange(ID, ds) %>%
-            mutate(invest = case_when(!is.na(buy.price) & !grepl("HOLD|SELL", action)
-                                      ~ round(Parms$max.capacity*lag(volume*(open + close)/2), 0))
-                   , invest = pmin(invest, Parms$invest.max.model)) %>% 
-            ungroup() 
+            mutate(action2 = ifelse(action == "MISSED BUY", NA, action)) %>%
+            group_by(action2, Type) %>% 
+            mutate(rank = case_when(Type == "LONG" ~ rank(-buy.price, ties.method = "last"),
+                                    Type == "SHRT" ~ rank(buy.price, ties.method = "last"))
+                   ) %>%
+            filter(!is.na(action2) | rank <= can.buy) %>%
+            ungroup() %>% select(-action2) %>%
+            select(algoId, ticker, ds, Type, buy.price, sell.price, stop.price, last.sell, signal, 
+                   action, units, ID, DP.Method, MA.Type, Period) %>%
+            rename(active.day = signal)
   }
   
-  if(is.null(sim) || nrow(sim) == 0)
+  if(is.null(today) || nrow(today) == 0)
   {
-    saveRDS(ticker, paste0(Parms$data.folder, "Process.Tracker/", ticker, ".rds"))
-    rm(ticker, d1, all, sim, can.buy)
-    return(data.frame())
+    today <- data.frame()
   } else
   {
-    today <- sim %>% group_by(ticker, ID, algoId) %>% filter(ds == max(ds)) %>%
-              select(algoId, ticker, ds, Type, buy.price, sell.price, stop.price, last.sell, action, invest, 
-                     ID, DP.Method, MA.Type, Period)
+    sim <- today %>% ungroup() %>% select(algoId, ID) %>% 
+            inner_join(sim, by = c("algoId", "ID")) %>%
+            group_by(algoId, ID) %>% arrange(ID, ds) %>% ungroup() %>%
+            select(-in.hand) %>% rename(active.day = signal)
     
     saveRDS(sim, paste0(Parms$data.folder, "Simulation/", ticker, ".rds"))
-    saveRDS(ticker, paste0(Parms$data.folder, "Process.Tracker/", ticker, ".rds"))
-    rm(ticker, d1, all, sim, can.buy)
-    return(today)
   }    
+  
+  saveRDS(ticker, paste0(Parms$data.folder, "Process.Tracker/", ticker, ".rds"))
+  rm(ticker, d1, all, sim, can.buy)
+  return(today)
+  
 }

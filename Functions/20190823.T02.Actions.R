@@ -27,7 +27,7 @@ IB.Actions <- function(today = Sys.Date())
   # Report Data Pull Errors
   failed <- setdiff(unique(IB.01.targets$ticker), unique(d1$ticker))
   if(length(failed) > 0)
-  {cat("\nData Pull Failed for", length(failed), "targets:", paste(failed, collapse = ", ") )}
+  {cat("\nData Pull Failed for", length(failed), "targets:", paste(failed, collapse = ", "), "\n" )}
   rm(failed)
   
   d1 <- d1 %>% mutate(NY.Time = as.numeric(format(Sys.time(), tz = "US/Eastern", format = "%H.%M")))
@@ -108,13 +108,8 @@ IB.Actions <- function(today = Sys.Date())
   # Get Current Positions
   position <- IB.04.activity %>% 
               group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
-              summarise(model.position = 1.0*sum(ifelse(IB.action == "BUY", volume, -volume))) %>%
-              filter(model.position > 0) %>%
-              left_join(IB.00.positions %>% rename(ticker = symbol) %>%
-                          group_by(ticker) %>% summarise(ticker.position = sum(position))
-                        , by = "ticker") %>%
-              filter(ticker.position >= model.position) %>% ungroup()
-  
+              summarise(model.position = 1.0*sum(volume)) %>%
+              filter(model.position != 0) %>% ungroup()
 
   # Integrate Current Position w/ Eligible Orders
   # Filter out Sell orders w/ no positions
@@ -247,17 +242,19 @@ IB.Action.Plots <- function()
 
     fname <- paste0(IB.Parms[["data.folder"]], "Plots/", x$ticker, " ", x$Model.ID, ".html")
 
-    saveWidget(as_widget(p)
-               , title = paste0(x$ticker, ": ", x$Type, " ", x$action, " "
-                                , x$volume, " Units @ $", x$t.price)
-               , libdir = "libdir"
-               , file = file.path(normalizePath(dirname(fname)),basename(fname))
-               )
-
-    browseURL(fname)
-
+    tryCatch( {
+                saveWidget(as_widget(p)
+                           , title = paste0(x$ticker, ": ", x$Type, " ", x$action, " "
+                                            , x$volume, " Units @ $", x$t.price)
+                           , libdir = "libdir"
+                           , file = file.path(normalizePath(dirname(fname)),basename(fname)))
+                browseURL(fname)
+              } 
+              , error = function(e) {cat("\nError in Saving Plot...\n")}
+              , warning = function(w) {cat("\nWarning in Saving Plot...\n")}
+            )
+    
     rm(max.y, min.y, t1, t2, t3, t4, fname, p, i, df, x)
 
   }
-
 }

@@ -101,9 +101,15 @@ IB.FinishDay <- function(Force.Close = FALSE)
   h.activity <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds")) %>%
                 bind_rows(IB.04.activity) %>% distinct() %>% arrange(desc(order.ts))
 
+  h.latest <- h.activity %>%
+              group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
+              summarise(volume = sum(volume, na.rm = TRUE)) %>%
+              filter(volume != 0)
+
   h.orders <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/03.Historical.Orders.rds")) %>%
               bind_rows(IB.03.orders) %>% distinct() %>% arrange(desc(order.ts))
 
+  saveRDS(h.latest, paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds"))
   saveRDS(h.missed, paste0(IB.Parms[["data.folder"]], "Trading/06.Historical.Misses.rds"))
   saveRDS(h.activity, paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds"))
   saveRDS(h.orders, paste0(IB.Parms[["data.folder"]], "Trading/03.Historical.Orders.rds"))
