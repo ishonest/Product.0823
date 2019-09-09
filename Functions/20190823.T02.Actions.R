@@ -12,8 +12,7 @@ IB.Actions <- function(today = Sys.Date())
                 , .combine = bind_rows, .errorhandling = 'remove') %do%
         {
           # ticker = unique(IB.01.targets$ticker)[1]
-          d1 <- get.clean.data(ticker, src = "yahoo",
-                               first.date = today, last.date  = today + 1) %>%
+          d1 <- get.clean.data(ticker, src = "yahoo", first.date = today, last.date  = today + 1) %>%
             rename(ds = ref.date, open = price.open, high = price.high, 
                    low = price.low, close = price.close) %>%
             select(ticker, ds, open, high, low, close)
@@ -52,8 +51,7 @@ IB.Actions <- function(today = Sys.Date())
           bind_rows(data.frame(ticker = "Overall >>", Type = "",
                                Investment = sum(x$Investment, na.rm = TRUE),
                                Gain = sum(x$Gain, na.rm = TRUE),
-                               stringsAsFactors = FALSE)
-                    ) %>%
+                               stringsAsFactors = FALSE)) %>%
           mutate(Type = format(Type, justify = 'left'),
                  Symbol = format(ticker, justify = 'left'),
                  ROI = 100*Gain/Investment,
@@ -66,16 +64,16 @@ IB.Actions <- function(today = Sys.Date())
     
     y <- x %>% select(Symbol, ROI) %>% rename("Last ROI  " = ROI)
     
-    if(exists("IB.00.Latest", envir = .GlobalEnv))
+    if(exists("IB.00.Last.Run", envir = .GlobalEnv))
     {
-      x <- left_join(x, IB.00.Latest, by = "Symbol")
+      x <- left_join(x, IB.00.Last.Run, by = "Symbol")
       colnames(x) <- c("", "", "Investment", "ROI  ", "Last ROI  ")
     } else
     {
       colnames(x) <- c("", "", "Investment", "ROI  ")
     }
 
-    assign("IB.00.Latest", y, envir = .GlobalEnv)
+    assign("IB.00.Last.Run", y, envir = .GlobalEnv)
     print(x, row.names = FALSE)
     cat("------------------------------------------------\n")
     rm(x, y)
@@ -83,71 +81,46 @@ IB.Actions <- function(today = Sys.Date())
   
   # Eligible Orders: Based on current price only
   o1 <- inner_join(IB.01.targets, d1, by = c("ticker", "ds")) %>%
-        mutate(action = case_when(Type == "LONG" & invest > 0 & 
-                                    close <= buy.price & close > stop.price ~ "BUY"
-                                  , Type == "LONG" & action == "HOLD" & 
-                                    sell.price <= high ~ "SELL"
-                                  , Type == "LONG" & action == "HOLD" & 
-                                    close <= stop.price ~ "STOP SELL"
-                                  , Type == "LONG" & action == "HOLD" & 
-                                    (!is.na(last.sell) & last.sell >= 0) &
-                                    between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "EOD SELL"
-                                  
-                                  , Type == "SHRT" & invest > 0 & 
-                                    close >= buy.price & close < stop.price ~ "BUY"
-                                  , Type == "SHRT" & action == "HOLD" & 
-                                    sell.price >= low ~ "SELL"
-                                  , Type == "SHRT" & action == "HOLD" & 
-                                    close >= stop.price ~ "STOP SELL"
-                                  , Type == "SHRT" & action == "HOLD" & 
-                                    (!is.na(last.sell) & last.sell >= 0) &
-                                    between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "EOD SELL"
-        )) %>%
-        filter(!is.na(action))
-  
-  # Get Current Positions
-  position <- IB.04.activity %>% 
-              group_by(ticker, algoId, DP.Method, MA.Type, Period) %>%
-              summarise(model.position = 1.0*sum(volume)) %>%
-              filter(model.position != 0) %>% ungroup()
-
-  # Integrate Current Position w/ Eligible Orders
-  # Filter out Sell orders w/ no positions
-  # Create IB Specifications
-  o2 <- left_join(o1, position, 
-                 by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
-        filter(grepl("BUY", action) | (grepl("SELL", action) & model.position > 0)) %>%
-        mutate(t.price = case_when(action %in% c("BUY", "SELL") ~ round(close, 2),
-                                   TRUE ~ 0)
-               , m.price = case_when(action == "SELL" ~ sell.price,
-                                     action == "STOP SELL" ~ stop.price,
-                                     # NA if "EOD SELL"
-                                     action == "BUY" ~ buy.price )
-               , volume = case_when(grepl("SELL", action) ~ model.position,
-                                    grepl("BUY", action) ~ floor(invest/t.price))
-               , IB.orderType = case_when(action %in% c("BUY", "SELL") ~ "LMT",
-                                          TRUE ~ "MKT")
+        mutate(IB.orderType = case_when(Type == "LONG" & units > 0 & 
+                                          close <= buy.price & close > stop.price ~ "LMT",
+                                        Type == "LONG" & units < 0 & sell.price <= high ~ "LMT",
+                                        Type == "LONG" & units < 0 & close <= stop.price ~ "MKT",
+                                        Type == "LONG" & units < 0 & 
+                                          (!is.na(last.sell) & last.sell >= 0) &
+                                          between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT",
+                                        
+                                        Type == "SHRT" & units < 0 & 
+                                          close >= buy.price & close < stop.price ~ "LMT",
+                                        Type == "SHRT" & units > 0 & sell.price >= low ~ "LMT",
+                                        Type == "SHRT" & units > 0 & close >= stop.price ~ "MKT",
+                                        Type == "SHRT" & units > 0 & 
+                                          (!is.na(last.sell) & last.sell >= 0) &
+                                          between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT")
+        ) %>%
+        filter(!is.na(IB.orderType)) %>%
+        # Create IB Specifications
+        mutate(t.price = case_when(IB.orderType == "LMT" ~ round(close, 2), TRUE ~ 0)
+               , volume = abs(units)
                , IB.action = case_when(Type == "LONG" & grepl("BUY", action) ~ "BUY",
                                        Type == "LONG" & grepl("SELL", action) ~ "SELL",
                                        Type == "SHRT" & grepl("BUY", action) ~ "SELL",
                                        Type == "SHRT" & grepl("SELL", action) ~ "BUY"
                                        )
                ) %>%
-        select(ticker, ds, Type, action, IB.action, IB.orderType, volume, t.price, m.price, 
-               algoId, ID, DP.Method, MA.Type, Period, Exchange, tickerID, NY.Time)
+              select(ticker, ds, Type, action, IB.action, IB.orderType, volume, t.price, 
+                     algoId, ID, DP.Method, MA.Type, Period, Exchange, tickerID, NY.Time)
   
   # Order within fund limits: Check if we need the cummin function
-  o3 <- o2 %>%
-        group_by(action) %>%
-        mutate(Cost = if_else(action == "BUY", -volume*t.price, volume*t.price)
-               , Available.Funds = Available.Funds + cumsum(Cost)
-        ) %>%
-        filter(Available.Funds > 0 | action != "BUY") %>% 
-        select(-c(Cost, Available.Funds)) %>%
-        ungroup()
+  o2 <- o1 %>%
+        mutate(action2 = ifelse(grepl("BUY", action), "BUY", "SELL")) %>%
+        group_by(action2) %>% arrange(action2, Type, desc(t.price)) %>%
+        mutate(Cost = if_else(action2 == "BUY", -volume*t.price, 0)
+               , Available.Funds = Available.Funds + cumsum(Cost)) %>%
+        filter(Available.Funds > 0 | action2 != "BUY") %>% 
+        ungroup() %>% select(-c(Cost, Available.Funds, action2))
   
-  assign("IB.02.actions", o3, envir = .GlobalEnv)
-  rm(d1, o1, o2, o3, position, today)
+  assign("IB.02.actions", o2, envir = .GlobalEnv)
+  rm(d1, o1, o2, today)
   gc()
 }
 
@@ -176,11 +149,11 @@ IB.Action.Plots <- function()
                , sell.price = last(df$sell.price)
                , stop.price = last(df$stop.price)
                , Model.ID = paste(algoId, DP.Method, MA.Type, Period)) %>%
-        select(-c(tickerID, algoId, DP.Method, MA.Type, Period, m.price)) %>%
+        select(-c(tickerID, algoId, DP.Method, MA.Type, Period)) %>%
         bind_cols(df %>% filter(!is.na(ROI)) %>%
                     summarise(N = n()
-                              , ROI = paste0(round(100*mean(ROI), 1), "%")
-                              , invest.period = round(mean(invest.period), 2)) )
+                              , ROI = case_when(N > 0 ~ paste0(round(100*mean(ROI), 1), "%"))
+                              , invest.period = case_when(N > 0 ~ round(mean(invest.period), 2))))
 
     if(max(df$close, na.rm = TRUE) > 20)
     {

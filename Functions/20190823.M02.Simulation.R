@@ -258,7 +258,7 @@ AF.simulate.20190823 <- function(sim)
 # -------------------------------------------------------------------------
 Get.Simulation <- function(ticker)
 {
-  # ticker = "USX"
+  # ticker = "CVIA"
   d1 <- all.d1 %>% filter(ticker == !!ticker) %>% ungroup() %>%
         select(ds, volume, open, low, high, close) %>% arrange(ds) %>% 
         mutate(ROI.l = -zoo::rollmax(-low, 5, fill = NA, align = "left")/lag(close)
@@ -299,7 +299,7 @@ Get.Simulation <- function(ticker)
           foreach(model.ID = unique(all$ID), .combine = bind_rows, .errorhandling = 'remove') %do%
           {
             # algo.ID = Parms$algoIds[1]
-            # model.ID = 170
+            # model.ID = 168
             sim <- all %>% filter(ID == model.ID, algoId == algo.ID) 
             
             if(algo.ID == "20190823" & nrow(sim) > 0)
@@ -320,9 +320,12 @@ Get.Simulation <- function(ticker)
   suppressWarnings
   {
     today <- sim %>% 
-            mutate(units = case_when(grepl("SELL", action) ~ abs(in.hand),
-                                     grepl("BUY", action) ~ floor(pmin(Parms$max.capacity*lag(volume),
-                                                                       Parms$invest.max.model/buy.price)))) %>%
+            mutate(units = case_when(grepl("SELL", action) ~ (-1)*in.hand,
+                                     grepl("BUY", action) & Type == "LONG" 
+                                     ~ floor(pmin(Parms$max.capacity*lag(volume), Parms$invest.max.model/buy.price)),
+                                     grepl("BUY", action) & Type == "SHRT" 
+                                     ~ -floor(pmin(Parms$max.capacity*lag(volume), Parms$invest.max.model/buy.price))
+                                     )) %>%
             filter(ds == max(ds) & !is.na(action)) %>%
             # # Push Missed Buys for 3 days max
             filter((action == "MISSED BUY" & signal <= 3) | action != "MISSED BUY") %>%
@@ -334,7 +337,7 @@ Get.Simulation <- function(ticker)
                    ) %>%
             filter(!is.na(action2) | rank <= can.buy) %>%
             ungroup() %>% select(-action2) %>%
-            select(algoId, ticker, ds, Type, buy.price, sell.price, stop.price, last.sell, signal, 
+            select(algoId, ticker, ds, buy.price, sell.price, stop.price, last.sell, signal, 
                    action, units, ID, DP.Method, MA.Type, Period) %>%
             rename(active.day = signal)
   }

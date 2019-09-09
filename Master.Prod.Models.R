@@ -80,8 +80,7 @@ do.call(file.remove,
                         , full.names = TRUE)))
 
 stocks <- setdiff(gsub(".rds", "", list.files(paste0(Parms$data.folder, "Scores/"))), 
-                  gsub(".rds", "", list.files(paste0(Parms$data.folder, "Process.Tracker/")))
-                  )
+                  gsub(".rds", "", list.files(paste0(Parms$data.folder, "Process.Tracker/"))))
 
 targets <- foreach(ticker = stocks, .combine = bind_rows, .packages = c("dplyr", "foreach"),
                    .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove'
@@ -97,7 +96,12 @@ overview <- readRDS(paste0(Parms$data.folder, "Summary/Overview.rds")) %>%
             distinct()
 
 targets <- left_join(targets, overview, by = "ticker") %>%
-            mutate(Exchange = ifelse(Exchange == "NASDAQ", "ISLAND", Exchange))
+            mutate(Exchange = ifelse(Exchange == "NASDAQ", "ISLAND", Exchange),
+                   Type = case_when(grepl("BUY", action) & units > 0 ~ "LONG",
+                                    grepl("SELL", action) & units < 0 ~ "LONG",
+                                    grepl("BUY", action) & units < 0 ~ "SHRT",
+                                    grepl("SELL", action) & units > 0 ~ "SHRT",
+                   ))
 
 saveRDS(targets, paste0(Parms$data.folder, "Trading/01.Targets.rds"))
 

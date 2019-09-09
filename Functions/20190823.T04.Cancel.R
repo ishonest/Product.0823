@@ -32,7 +32,7 @@ IB.Cancel.Orders <- function()
     open <- data.frame()
     i <- 0 # Counter to extract information between 2 OPEN_ORDER_END messages
     n <- 0 # Counter to control the max messages / secton
-    while(i < 5)
+    while(i < 2)
     {
       x <- Open.Orders(tws)
       if(!is.null(x) && !is.list(x))

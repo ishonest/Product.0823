@@ -212,17 +212,15 @@ IB.System.Status <- function()
 
 IB.StartDay <- function()
 {
-  source("./Functions/20190823.M00.Trading.Days.R")
-  assign("IB.00.Latest"
-         , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds")) %>% 
-           filter(ds == PrevTradingDate()) %>% select(-ds)
-         , envir = .GlobalEnv)
-  rm(NextTradingDate, PrevTradingDate, TradingDates, envir = .GlobalEnv)
-  
+  # assign("IB.00.Latest", readRDS(paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds"))
+  #        , envir = .GlobalEnv)
   assign("IB.01.targets"
          , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds"))
          , envir = .GlobalEnv)
-  assign("IB.03.orders", data.frame(stringsAsFactors = FALSE), envir = .GlobalEnv)
+  assign("IB.03.orders"
+         , data.frame(stringsAsFactors = FALSE)
+         # , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/03.Historical.Orders.rds"))
+         , envir = .GlobalEnv)
   assign("IB.04.activity"
          , readRDS(paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds"))
          , envir = .GlobalEnv)

@@ -102,14 +102,13 @@ IB.Emergency <- function()
     
     x <- IB.00.positions %>%
           filter(position != 0) %>%
-          rename(ticker = symbol, volume = position) %>%
-          select(accountName, conId, ticker, local, volume, primary, currency) %>%
+          rename(ticker = symbol, units = position) %>%
+          select(accountName, conId, ticker, local, units, primary, currency) %>%
           mutate(primary = ifelse(primary == "NASDAQ", "ISLAND", primary)) %>%
           left_join(readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds")) %>% 
                       select(algoId, ticker) %>% distinct()
                     , by = "ticker") %>%
-          mutate(IB.action = ifelse(volume > 0, "SELL", "BUY"),
-                 volume = abs(volume)) %>%
+          mutate(IB.action = ifelse(units > 0, "SELL", "BUY"), volume = abs(units)) %>%
           group_by(ticker, IB.action) %>%
           filter(row_number() == 1)
     
