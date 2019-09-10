@@ -27,8 +27,8 @@ if(file.exists(paste0(Parms$data.folder, "Trading/00.Latest.rds")))
 
   prod.models <- prod.models %>% arrange(ticker, ID, R, algoId) %>%
                   left_join(in.hand, by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) %>%
-                  filter(algoId %in% Parms$buyalgos | !is.na(volume)) %>%
-                  select(-volume)
+                  filter(algoId %in% Parms$buyalgos | !is.na(units)) %>%
+                  select(-units)
 }
 
 hist.d1 <- readRDS(paste0(Parms$data.folder, "Summary/Clean.Prices.rds")) %>% 
@@ -85,11 +85,10 @@ stocks <- setdiff(gsub(".rds", "", list.files(paste0(Parms$data.folder, "Scores/
 targets <- foreach(ticker = stocks, .combine = bind_rows, .packages = c("dplyr", "foreach"),
                    .multicombine = TRUE, .inorder = FALSE, .errorhandling = 'remove'
                    ) %dopar%
-{
-  # ticker = "PTI"
-  targets <- Get.Simulation(ticker)
-  return(targets)
-}
+            {
+              targets <- Get.Simulation(ticker)
+              return(targets)
+            }
 
 overview <- readRDS(paste0(Parms$data.folder, "Summary/Overview.rds")) %>%
             select(ticker, Exchange, tickerID) %>%
@@ -100,8 +99,10 @@ targets <- left_join(targets, overview, by = "ticker") %>%
                    Type = case_when(grepl("BUY", action) & units > 0 ~ "LONG",
                                     grepl("SELL", action) & units < 0 ~ "LONG",
                                     grepl("BUY", action) & units < 0 ~ "SHRT",
-                                    grepl("SELL", action) & units > 0 ~ "SHRT",
-                   ))
+                                    grepl("SELL", action) & units > 0 ~ "SHRT")) %>%
+            select(ticker, ds, Type, action, units, buy.price, sell.price, stop.price, last.sell, 
+                   active.day, algoId, ID, DP.Method, MA.Type, Period, Exchange, tickerID) %>%
+            arrange(ticker, active.day)
 
 saveRDS(targets, paste0(Parms$data.folder, "Trading/01.Targets.rds"))
 

@@ -48,8 +48,7 @@ AF.simulate.hedge <- function(df, Process = "Development")
         arrange(ID, ds) %>%
         mutate(buy.signal = case_when(Type == "LONG" & buy.price >= low ~ TRUE,
                                       Type == "SHRT" & buy.price <= high ~ TRUE,
-                                      TRUE ~ FALSE
-                                      ),
+                                      TRUE ~ FALSE),
                sell.signal = case_when(Type == "LONG" & sell.price <= high ~ TRUE,
                                        Type == "SHRT" & sell.price >= low ~ TRUE,
                                        TRUE ~ FALSE),
@@ -168,20 +167,23 @@ AF.simulate.hedge <- function(df, Process = "Development")
   }
   
   op <- bind_cols(op, data.frame(continue.trading, action, capacity, ROI, invest.period
-                                 , stringsAsFactors = FALSE)) %>%
-        
+                               , stringsAsFactors = FALSE)) %>% arrange(ds) %>%
         # Provisions for Missed Sell
         mutate(missed.sell = case_when(!is.na(in.hand) & 
-                                         row_number() >= max(which(grepl("SELL", action))) ~ 1,
+                                         max(which(grepl("SELL", action))) > max(which(grepl("BUY", action))) &
+                                         row_number() > max(which(grepl("BUY", action))) ~ 1,
                                        TRUE ~ 0)
                , action = ifelse(missed.sell == 1, "MISSED SELL", action)
                , Type = ifelse(missed.sell == 1, zoo::na.locf(Type), Type)
-               , signal = ifelse(missed.sell == 1, zoo::na.locf(signal), signal)
+               , signal = ifelse(missed.sell == 1 & is.na(signal), zoo::na.locf(signal), signal)
                , sell.price = ifelse(missed.sell == 1 & is.na(sell.price), zoo::na.locf(sell.price), sell.price)
                , stop.price = ifelse(missed.sell == 1 & is.na(stop.price), zoo::na.locf(stop.price), stop.price)
+               , last.sell = ifelse(missed.sell == 1 & row_number() > max(which(!!last.sell > 0)),
+                                    last(last.sell[!!last.sell > 0]),
+                                    last.sell)
                , continue.trading = ifelse(missed.sell == 1, 1, continue.trading)
                , ROI = ifelse(missed.sell == 1, NA, ROI)
-               , invest.period = ifelse(missed.sell == 1, NA, invest.period) 
+               , invest.period = ifelse(missed.sell == 1, NA, invest.period)
                ) %>%
         select(-missed.sell) %>%
         
@@ -203,6 +205,7 @@ AF.simulate.hedge <- function(df, Process = "Development")
                , last.sell = case_when(continue.trading > 0 ~ last.sell)
         ) %>%
         select(-continue.trading) %>%
+        
         # Provisions for Last Day
         mutate(action = case_when(row_number() == n() & is.na(action) & !is.na(buy.price) & is.na(in.hand) ~ "CAN BUY", 
                                   row_number() == n() & !is.na(action) & action == "HOLD" ~ "CAN SELL",
@@ -216,6 +219,7 @@ AF.simulate.hedge <- function(df, Process = "Development")
   return(op)
 }
 
+# -------------------------------------------------------------------------
 AF.simulate.20190823 <- function(sim)
 {
   # sim <- all %>% filter(ID == model.ID, algoId == algo.ID) 
@@ -258,7 +262,7 @@ AF.simulate.20190823 <- function(sim)
 # -------------------------------------------------------------------------
 Get.Simulation <- function(ticker)
 {
-  # ticker = "CVIA"
+  # ticker = "ADMA"
   d1 <- all.d1 %>% filter(ticker == !!ticker) %>% ungroup() %>%
         select(ds, volume, open, low, high, close) %>% arrange(ds) %>% 
         mutate(ROI.l = -zoo::rollmax(-low, 5, fill = NA, align = "left")/lag(close)
@@ -291,15 +295,14 @@ Get.Simulation <- function(ticker)
                   , by = c("algoId" , "ticker", "ID", "DP.Method", "MA.Type", "Period", "R")) %>%
         group_by(ticker, ID, algoId) %>%
         filter(!all(is.na(R.low))) %>%
-        left_join(in.hand %>% rename(in.hand = volume),
+        left_join(in.hand %>% rename(in.hand = units),
                   by = c("ticker", "algoId", "DP.Method", "MA.Type", "Period")) 
-        # left_join(hist.miss, by = c("ds", "ticker", "algoId", "ID", "DP.Method", "MA.Type", "Period"))
-  
+
   sim <- foreach(algo.ID = Parms$algoIds, .combine = bind_rows, .errorhandling = 'remove') %:%
           foreach(model.ID = unique(all$ID), .combine = bind_rows, .errorhandling = 'remove') %do%
           {
             # algo.ID = Parms$algoIds[1]
-            # model.ID = 168
+            # model.ID = 49
             sim <- all %>% filter(ID == model.ID, algoId == algo.ID) 
             
             if(algo.ID == "20190823" & nrow(sim) > 0)
@@ -350,7 +353,10 @@ Get.Simulation <- function(ticker)
     sim <- today %>% ungroup() %>% select(algoId, ID) %>% 
             inner_join(sim, by = c("algoId", "ID")) %>%
             group_by(algoId, ID) %>% arrange(ID, ds) %>% ungroup() %>%
-            select(-in.hand) %>% rename(active.day = signal)
+            select(c(ticker, ds, ID, Type, signal, action, 
+                     Score, volume, open, low, high, close, buy.price, sell.price, stop.price, last.sell, 
+                     capacity, ROI, invest.period, algoId, DP.Method, MA.Type, Period, R)) %>% 
+            rename(active.day = signal)
     
     saveRDS(sim, paste0(Parms$data.folder, "Simulation/", ticker, ".rds"))
   }    
