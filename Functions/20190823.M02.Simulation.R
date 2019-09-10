@@ -36,7 +36,6 @@ AF.Signal.Strength <- function(window, Type)
   return(strength)
 }
 
-    
 # -------------------------------------------------------------------------
 # AF.simulate trade for long and short trades
 # -------------------------------------------------------------------------

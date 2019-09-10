@@ -10,10 +10,11 @@ source("./Functions/20190823.T01.Start.R")
 while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.Trading.At"]])
 {
   View(IB.01.targets)
+  IB.Account.Status()
+  IB.System.Status()
+  
   if(IB.Parms[["System.Live"]])
   {
-    IB.Account.Status()
-    
     IB.Actions()
     View(IB.02.actions)    
     IB.Order()
@@ -31,7 +32,7 @@ while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.T
 # -------------------------------------------------------------------------
 # End of Day Process
 # -------------------------------------------------------------------------
-source("./Functions/20190823.T06.CloseDay.R")
+source("./Functions/20190823.T06.ShutterDown.R")
 
 # -------------------------------------------------------------------------
 # WARNING: Emergency Process: All positions will be closed

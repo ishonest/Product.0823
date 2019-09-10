@@ -6,7 +6,7 @@ IB.Actions <- function(today = Sys.Date())
   
   # Pull Latest Data
   tickers <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/01.Targets.rds")) %>%
-              select(ticker) %>% distinct() %>% unlist()
+              select(ticker) %>% distinct() %>% unlist(use.names = FALSE)
   
   d1 <- foreach(ticker = tickers, .packages = "BatchGetSymbols"
                 , .combine = bind_rows, .errorhandling = 'remove') %do%
@@ -130,7 +130,7 @@ IB.Action.Plots <- function()
 
   for(i in 1:nrow(IB.02.actions))
   {
-    # i = 1
+    # i = 2
     x <- IB.02.actions[i, ]
     df <- readRDS(paste0(IB.Parms[["data.folder"]], "Simulation/", x$ticker, ".rds")) %>%
           semi_join(x, by = c("algoId", "ID")) %>%
@@ -166,11 +166,14 @@ IB.Action.Plots <- function()
     }
 
     t1 <- paste(x$ticker, x$Model.ID, x$Type, sep = " | ")
-    t2 <- ifelse(is.na(x$t.price),
+    t2 <- ifelse(is.na(x$t.price) | x$t.price == 0,
                  paste0(x$action, " ", x$volume, " Units @ Market Price"),
                  paste0(x$action, " ", x$volume, " Units @ $", round(x$t.price, 2)))
     
-    t3 <- paste0("Buy $", x$buy.price, " | Sell $", x$sell.price, " | Stop Loss $", x$stop.price)
+    t3 <- ifelse(x$IB.action == "BUY",  
+                 paste0("Buy $", x$buy.price),
+                 paste0("Sell $", x$sell.price, " | Stop Loss $", x$stop.price))
+    
     t4 <- ifelse(x$N <= 0, "No History"
                  , paste0("History: ", x$N, " times for ", x$invest.period, " Days | ROI ", x$ROI))
 

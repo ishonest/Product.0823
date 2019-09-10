@@ -95,7 +95,11 @@ overview <- readRDS(paste0(Parms$data.folder, "Summary/Overview.rds")) %>%
             distinct()
 
 targets <- left_join(targets, overview, by = "ticker") %>%
-            mutate(Exchange = ifelse(Exchange == "NASDAQ", "ISLAND", Exchange),
+            mutate(buy.price = case_when(grepl("BUY", action) ~ buy.price),
+                   sell.price = case_when(grepl("SELL", action) ~ sell.price),
+                   stop.price = case_when(grepl("SELL", action) ~ stop.price),
+                   last.sell = case_when(grepl("SELL", action) ~ last.sell),
+                   Exchange = ifelse(Exchange == "NASDAQ", "ISLAND", Exchange),
                    Type = case_when(grepl("BUY", action) & units > 0 ~ "LONG",
                                     grepl("SELL", action) & units < 0 ~ "LONG",
                                     grepl("BUY", action) & units < 0 ~ "SHRT",

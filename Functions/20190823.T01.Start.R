@@ -175,23 +175,10 @@ IB.System.Status <- function()
     IB.Parms[["System.Live"]] <- FALSE
     cat(paste("\nNYSE & NASDAQ are closed today. Markets will reopen on", Next.Day, "... \n"))
     rm(NY.Time, Next.Day, Trade.Days)
-  } else if(NY.Time < 9.3)
+  } else if(NY.Time < IB.Parms[["Start.Trading.At"]])
   {
     IB.Parms[["System.Live"]] <- FALSE
     cat("\nMarkets are closed now. Will reopen in", Time.Difference(to = 9.3, fr = NY.Time), "... \n")
-    rm(NY.Time, Next.Day, Trade.Days, Time.Difference)
-    
-  } else if(NY.Time < IB.Parms[["Start.Trading.At"]])
-  {
-    IB.Parms[["System.Live"]] <- TRUE
-    cat("\nMarket is Open. The System has been set to SELL ONLY for another", 
-        Time.Difference(to = IB.Parms[["Start.Trading.At"]], fr = NY.Time), "... \n")
-    rm(NY.Time, Next.Day, Trade.Days, Time.Difference)
-    
-  } else if(NY.Time >= IB.Parms[["Stop.Trading.At"]])
-  {
-    IB.Parms[["System.Live"]] <- FALSE
-    cat(paste("\nMarkets are closed for the day. They will reopen on", Next.Day), "... \n")
     rm(NY.Time, Next.Day, Trade.Days, Time.Difference)
     
   } else if(IB.Parms[["Emergency"]] == TRUE)
