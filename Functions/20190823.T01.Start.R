@@ -32,6 +32,7 @@ library(foreach)
 library(BatchGetSymbols)
 library(plotly)
 library(htmlwidgets)
+library(knitr)
 library(IBrokers)
 # -------------------------------------------------------------------------
 # Start-Up Functions 
@@ -106,8 +107,8 @@ IB.Account.Status <- function()
           summarise(Current.Position = sum(abs(marketValue), na.rm = TRUE),
                     Investment = sum(abs(position*averageCost), na.rm = TRUE),
                     Available.Funds = IB.Parms[["invest.max"]] - Investment,
-                    ROI.investment = ifelse(Investment > 0, 
-                                            round(100*(Current.Position/Investment - 1), 2), 0),
+                    # ROI.investment = ifelse(Investment > 0, 
+                    #                         round(100*(Current.Position/Investment - 1), 2), 0),
                     ROI.portfolio = sum(as.numeric(unrealizedPNL), as.numeric(realizedPNL)),
                     ROI.portfolio = round(100*ROI.portfolio/IB.Parms[["invest.max"]], 2))
     
@@ -170,7 +171,7 @@ IB.System.Status <- function()
   }
   
   # -------------------------------------------------------------------------
-  if(!(Sys.Date() %in% Trade.Days)) 
+  if(!(Sys.Date() %in% Trade.Days) | NY.Time > IB.Parms[["Stop.Trading.At"]]) 
   {
     IB.Parms[["System.Live"]] <- FALSE
     cat(paste("\nNYSE & NASDAQ are closed today. Markets will reopen on", Next.Day, "... \n"))
@@ -178,7 +179,8 @@ IB.System.Status <- function()
   } else if(NY.Time < IB.Parms[["Start.Trading.At"]])
   {
     IB.Parms[["System.Live"]] <- FALSE
-    cat("\nMarkets are closed now. Will reopen in", Time.Difference(to = 9.3, fr = NY.Time), "... \n")
+    cat("\nMarkets are closed now. Will reopen in", 
+        Time.Difference(to = IB.Parms[["Start.Trading.At"]], fr = NY.Time), "... \n")
     rm(NY.Time, Next.Day, Trade.Days, Time.Difference)
     
   } else if(IB.Parms[["Emergency"]] == TRUE)

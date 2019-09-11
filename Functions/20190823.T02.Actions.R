@@ -81,21 +81,32 @@ IB.Actions <- function(today = Sys.Date())
   
   # Eligible Orders: Based on current price only
   o1 <- inner_join(IB.01.targets, d1, by = c("ticker", "ds")) %>%
-        mutate(IB.orderType = case_when(Type == "LONG" & units > 0 & 
-                                          close <= buy.price & close > stop.price ~ "LMT",
-                                        Type == "LONG" & units < 0 & sell.price <= high ~ "LMT",
-                                        Type == "LONG" & units < 0 & close <= stop.price ~ "MKT",
-                                        Type == "LONG" & units < 0 & 
-                                          (!is.na(last.sell) & last.sell >= 0) &
-                                          between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT",
-                                        
-                                        Type == "SHRT" & units < 0 & 
-                                          close >= buy.price & close < stop.price ~ "LMT",
-                                        Type == "SHRT" & units > 0 & sell.price >= low ~ "LMT",
-                                        Type == "SHRT" & units > 0 & close >= stop.price ~ "MKT",
-                                        Type == "SHRT" & units > 0 & 
-                                          (!is.na(last.sell) & last.sell >= 0) &
-                                          between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT")
+        mutate(IB.orderType = case_when(
+                      # BUY
+                      Type == "LONG" & units > 0 & close <= buy.price & close > stop.price ~ "LMT",
+                      # SELL
+                      Type == "LONG" & units < 0 & sell.price <= high ~ "LMT",
+                      # STOP SELL
+                      Type == "LONG" & units < 0 & close <= stop.price ~ "MKT",
+                      # MISSED SELL + EOD
+                      Type == "LONG" & units < 0 & action == "MISSED SELL" & !is.na(last.sell) ~ "MKT",
+                      # EOD SELL
+                      Type == "LONG" & units < 0 & 
+                        (!is.na(last.sell) & last.sell >= 0) &
+                        between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT",
+                      
+                      # BUY
+                      Type == "SHRT" & units < 0 & close >= buy.price & close < stop.price ~ "LMT",
+                      # SELL
+                      Type == "SHRT" & units > 0 & sell.price >= low ~ "LMT",
+                      # STOP SELL
+                      Type == "SHRT" & units > 0 & close >= stop.price ~ "MKT",
+                      # MISSED SELL + EOD
+                      Type == "SHRT" & units > 0 & action == "MISSED SELL" & !is.na(last.sell) ~ "MKT",
+                      # EOD SELL
+                      Type == "SHRT" & units > 0 & 
+                        (!is.na(last.sell) & last.sell >= 0) &
+                        between(NY.Time, IB.Parms[["Last.Sell.At"]], 16) ~ "MKT")
         ) %>%
         filter(!is.na(IB.orderType)) %>%
         # Create IB Specifications

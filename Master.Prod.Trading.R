@@ -23,10 +23,13 @@ while(lubridate::hour(format(Sys.time(), tz = "US/Eastern")) < IB.Parms[["Stop.T
   
   IB.Next.Run()
   
-  IB.Cancel.Orders()
-  Sys.sleep(10)
-  Update.Activity()
-  View(IB.04.activity)
+  if(IB.Parms[["System.Live"]])
+  {
+    IB.Cancel.Orders()
+    Sys.sleep(10)
+    Update.Activity()
+    View(IB.04.activity)
+  }
 }
 
 # -------------------------------------------------------------------------

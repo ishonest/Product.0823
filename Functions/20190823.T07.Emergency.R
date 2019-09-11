@@ -132,7 +132,6 @@ IB.Emergency <- function()
       assign("IB.03.orders",  IB.03.orders, envir = .GlobalEnv)
       rm(IB.03.orders, order.type)
     }
-    
 
     if(nrow(x) > 0)
     {

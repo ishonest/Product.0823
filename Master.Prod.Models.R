@@ -31,15 +31,13 @@ if(file.exists(paste0(Parms$data.folder, "Trading/00.Latest.rds")))
                   select(-units)
 }
 
+# -------------------------------------------------------------------------
+# Incremental Data Pull: Works in the middle of the trading day
+# -------------------------------------------------------------------------
 hist.d1 <- readRDS(paste0(Parms$data.folder, "Summary/Clean.Prices.rds")) %>% 
             filter(ticker %in% unique(prod.models$ticker))
 
-# -------------------------------------------------------------------------
-# Incremental Data Pull: Works in the middle of the trading
-# -------------------------------------------------------------------------
-all.d1 <- Get.Incremental.Data(stocks = unique(hist.d1$ticker),
-                               first.date = max(hist.d1$ds))
-
+all.d1 <- Get.Incremental.Data(stocks = unique(hist.d1$ticker), first.date = max(hist.d1$ds))
 rm(hist.d1)
 # -------------------------------------------------------------------------
 # Rescoring with New Data
@@ -70,8 +68,7 @@ rm(stocks)
 # -------------------------------------------------------------------------
 # Get Targets: Stocks in active zone + price points 
 # Filters investment in more than 3 models
-# Assigns the investment value
-# Keeps record of the holding investment for sell
+# Assigns the #units bought/sold
 # -------------------------------------------------------------------------
 source("./Functions/20190823.M02.Simulation.R")
 

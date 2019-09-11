@@ -82,6 +82,54 @@ AF.Manual.Activity <- function()
 
 }
 
+AF.Performance.Summary <- function()
+{
+  
+  d1 <- foreach(ticker = unique(IB.04.activity$ticker), .packages = "BatchGetSymbols"
+                , .combine = bind_rows, .errorhandling = 'remove') %do%
+    {
+      d1 <- get.clean.data(ticker, src = "yahoo", first.date = max(IB.01.targets$ds)
+                           , last.date  = max(IB.01.targets$ds) + 1
+                           ) %>%
+              rename(close = price.close) %>% select(ticker, close)
+      
+      rm(ticker)
+      return(d1)
+    }
+
+  x <- IB.04.activity %>%
+        mutate(order.ds = as.Date(order.ts)) %>%
+        group_by(algoId, ticker, Type, DP.Method, MA.Type, Period) %>%
+        summarise(returns = sum(price*units), units = sum(units)) %>%
+        left_join(d1, by = "ticker") %>%
+        mutate(returns = units*close - returns) 
+  
+  y <- x %>% group_by(Type) %>%
+        summarise(Trades = n(),
+                  SR = sum(returns > 0)/Trades,
+                  Returns = sum(returns),
+                  ROI = Returns/IB.Parms[["invest.max"]]
+                  ) %>%
+        bind_rows(x %>% ungroup() %>%
+                    summarise(Type = "Overall",
+                              Trades = n(),
+                              SR = sum(returns > 0)/Trades,
+                              Returns = sum(returns),
+                              ROI = Returns/IB.Parms[["invest.max"]] )
+                  ) %>%
+        mutate(Returns = paste(formatC(Returns, format="f", big.mark=",", digits=0), "USD"),
+               ROI = paste0(formatC(100*ROI, format="f", big.mark=",", digits=2), "%"),
+               SR = paste0(formatC(100*SR, format="f", big.mark=",", digits=2), "%")) %>%
+        rename("Gross Returns" = Returns, "Gross ROI" = ROI, "Success Rate" = SR)
+  
+  cat("\n")
+  print(knitr::kable(y, align = 'r'))
+  cat("\n")
+  
+  rm(x, y, d1)
+  
+}
+
 IB.Shutter.Down <- function(Force.Close = FALSE)
 {
   NY.Time <- as.numeric(strftime(format(Sys.time(), tz = "US/Eastern"), format = "%H.%M"))
@@ -93,6 +141,7 @@ IB.Shutter.Down <- function(Force.Close = FALSE)
   IB.Cancel.Orders()
   Update.Activity()
   AF.Manual.Activity()
+  AF.Performance.Summary()
 
   h.activity <- readRDS(paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds")) %>%
                 bind_rows(IB.04.activity) %>% distinct() %>% arrange(desc(order.ts))
@@ -107,15 +156,13 @@ IB.Shutter.Down <- function(Force.Close = FALSE)
   
   View(h.activity)
   View(h.latest)
-  View(h.orders)
-  
+
   saveRDS(h.latest, paste0(IB.Parms[["data.folder"]], "Trading/00.Latest.rds"))
   saveRDS(h.activity, paste0(IB.Parms[["data.folder"]], "Trading/02.Historical.Activity.rds"))
   saveRDS(h.orders, paste0(IB.Parms[["data.folder"]], "Trading/03.Historical.Orders.rds"))
 
   do.call(file.remove, list(list.files(paste0(IB.Parms$data.folder, "Simulation/"), full.names = TRUE)))
   rm(h.activity, h.orders, h.latest, Force.Close)
-  rm(list = setdiff(ls(envir = .GlobalEnv), c("tws")), envir = .GlobalEnv)
 }
 
 IB.Shutter.Down()
